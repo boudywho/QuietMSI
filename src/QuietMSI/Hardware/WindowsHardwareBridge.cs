@@ -69,12 +69,16 @@ public sealed class WindowsHardwareBridge : ReadOnlyBridge
 
     private void Terminate(Process worker)
     {
-        try { if (!worker.HasExited) worker.Kill(entireProcessTree: true); }
-        catch (InvalidOperationException) { }
-        if (!worker.WaitForExit(2000))
+        try
+        {
+            try { if (!worker.HasExited) worker.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            if (!worker.WaitForExit(2000)) throw new InvalidOperationException("Telemetry worker termination failed. Further reads are blocked to avoid overlap.");
+        }
+        catch
         {
             _quarantined = true;
-            throw new InvalidOperationException("Telemetry worker termination failed. Further reads are blocked to avoid overlap.");
+            throw;
         }
     }
 }
