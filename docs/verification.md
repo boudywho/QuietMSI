@@ -1,6 +1,6 @@
 # Verification results — initial read-only build
 
-## Real execution
+Normal source builds/testing and performance references here describe v0.1 unless explicitly stated. Corrected v0.2 actual Apply/elevation tests are documented in docs/v2-verification.md; no v0.1 footprint claims establish a v0.2 aggregate resource budget.
 
 Official user-local .NET SDK 8.0.425, SHA-512 verified against Microsoft's release metadata. Native .NET 8 Windows x64 framework-dependent publish completed with 0 warnings and 0 errors. ILSpy analysis tools and SDK are outside the product distribution.
 

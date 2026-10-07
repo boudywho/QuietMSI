@@ -8,8 +8,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>QuietMSI</AssemblyName>
     <RootNamespace>QuietMSI</RootNamespace>
-    <Version>0.1.0</Version>
-    <Description>Native read-only MSI laptop telemetry with fail-closed hardware controls.</Description>
+    <Version>0.2.0</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Description>Native MSI laptop telemetry and verified hardware controls; administrator permission required.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>

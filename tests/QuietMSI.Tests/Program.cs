@@ -96,5 +96,80 @@ Test("Protected sensors require exact current firmware and WMI schema", () =>
     v[2]=9; Assert(!ProtectedTelemetryPolicy.Supports(id,v), "Unknown changed interface denied");
 });
 
+Test("Control plans preserve bits and deny unknown states", () =>
+{
+    var state = new HardwareControlState(0xc1,0x0d,0x06);
+    var boost = VerifiedControlPlan.Create(new(ControlKind.CoolerBoost,"true"),state);
+    Assert(boost.Count==1 && boost[0].Offset==0x98 && boost[0].Before==6 && boost[0].After==0x86, "Boost mask must preserve six");
+    var profile=VerifiedControlPlan.Create(new(ControlKind.PerformanceProfile,"Medium"),state);
+    Assert(profile[0].Offset==0xd2 && profile[0].After==0xc1,"Medium encoding exact");
+    var auto=VerifiedControlPlan.Create(new(ControlKind.AutomaticFans,"Auto"),state with {FanMode=0x8d,Boost=0x86});
+    Assert(auto.Any(x=>x.Offset==0xd4&&x.After==0x0d) && auto.Any(x=>x.Offset==0x98&&x.After==6),"Auto clears only verified mode flags and boost");
+    bool denied=false;try{VerifiedControlPlan.Create(new(ControlKind.CoolerBoost,"true"),state with {Boost=null});}catch(InvalidOperationException){denied=true;}
+    Assert(denied,"Missing pre-read denies write");
+    denied=false;try{VerifiedControlPlan.Create(new(ControlKind.PerformanceProfile,"overclock"),state);}catch(ArgumentException){denied=true;}
+    Assert(denied,"Unsupported profile denied");
+});
+
+Test("Transaction refuses changed pre-read and logs before write", () =>
+{
+    var t = new FakeControlTransport(new HardwareControlState(0xc1,0x0d,6));
+    var result = new ControlTransaction(t).Apply(new(ControlKind.CoolerBoost,"true"));
+    Assert(result.Applied && t.State.Boost==0x86 && t.Events.IndexOf("Pending")<t.Events.IndexOf("Write"),"Read log write read order");
+    var changed = new FakeControlTransport(new HardwareControlState(0xc1,0x0d,6)) { Conflict=true };
+    result = new ControlTransaction(changed).Apply(new(ControlKind.CoolerBoost,"true"));
+    Assert(!result.Applied && !changed.Events.Contains("Write"),"Conflict must deny before write");
+    var bad = new FakeControlTransport(new HardwareControlState(0xc1,0x0d,6)) { FailPost=true };
+    result = new ControlTransaction(bad).Apply(new(ControlKind.CoolerBoost,"true"));
+    Assert(!result.Applied && bad.Events.Count(x=>x=="Write")==1,"No retry after mismatch");
+});
+
+Test("Advanced mode requires safe existing six-slot curve", () =>
+{
+    var state=new HardwareControlState(0xc1,0x0d,6,new[]{38,43,48,54,60,70},new[]{0,55,64,73,76,82});
+    var plan=VerifiedControlPlan.Create(new(ControlKind.AutomaticFans,"Advanced"),state);
+    Assert(plan[0].Offset==0xd4&&plan[0].After==0x8d,"Mode enables only advanced bit");
+    bool denied=false;try{VerifiedControlPlan.Create(new(ControlKind.AutomaticFans,"Advanced"),state with {CpuCurve=new[]{0,20,30,40,50,60}});}catch(InvalidOperationException){denied=true;}
+    Assert(denied,"Potential fan-stop curve denies mode switch");
+});
+
+Test("Cooling-only curve preserves noneditable bytes and original floor", () =>
+{
+    var original=new byte[]{60,38,43,48,54,60,70,85};
+    var p=CoolingCurvePlan.Create(original,"38,43,49,54,60,70");
+    Assert(p[0]==60&&p[7]==85&&p[3]==49,"Only six editable slots");
+    bool denied=false;try{CoolingCurvePlan.Create(original,"37,43,48,54,60,70");}catch(ArgumentException){denied=true;}
+    Assert(denied,"Lower than original denied");
+    denied=false;try{CoolingCurvePlan.Create(original,"38,43,48,54,60,90");}catch(ArgumentException){denied=true;}
+    Assert(denied,"Above preserved terminal cap denied");
+});
+
+Test("Advanced rejects changed curve before mode write", () =>
+{
+    var t=new FakeControlTransport(new(0xc1,0x0d,6,new[]{38,43,48,54,60,70},new[]{0,55,64,73,76,82}));
+    t.OnRead=(n,s)=>n>1?s with {CpuCurve=new[]{0,0,0,0,0,0}}:s;
+    var r=new ControlTransaction(t).Apply(new(ControlKind.AutomaticFans,"Advanced"));
+    Assert(!r.Applied&&!t.Events.Contains("Write"),"Changed dependency must deny before enabling Advanced");
+});
+Test("Multi-register final drift cannot report success", () =>
+{
+    var t=new FakeControlTransport(new(0xc1,0x8d,0x86));
+    t.OnRead=(n,s)=>n>=4?s with {FanMode=0x8d}:s;
+    var r=new ControlTransaction(t).Apply(new(ControlKind.AutomaticFans,"Auto"));
+    Assert(!r.Applied,"Final full requested state must match");
+});
+Test("Curve match permits dynamic header but not editable drift", () =>
+{
+ var a=new byte[]{60,38,43,48,54,60,70,85};var b=(byte[])a.Clone();b[0]=70;
+ Assert(CoolingCurvePlan.SameStableFields(a,b),"Dynamic header is not curve drift");b[3]=49;
+ Assert(!CoolingCurvePlan.SameStableFields(a,b),"Editable field change remains conflict");
+});
+Test("Contradictory setter status is rejected", () =>
+{
+    var p=new byte[32];p[0]=1;
+    Assert(!WmiResultRules.SetterSucceeded(false,p),"Explicit false overrides packet status");
+    Assert(WmiResultRules.SetterSucceeded(null,p),"Absent optional return preserves established packet contract");
+});
+
 Console.WriteLine($"RESULT {passed} passed, {failures.Count} failed");
 return failures.Count == 0 ? 0 : 1;

@@ -15,7 +15,7 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Publish failed'}
     Copy-Item LICENSE,README.md,SECURITY.md,THIRD-PARTY-NOTICES.md -Destination artifacts/portable
     New-Item -ItemType Directory -Path artifacts/portable/docs -Force | Out-Null
-    Copy-Item docs/hardware-specs.md,docs/verification.md -Destination artifacts/portable/docs
+    Copy-Item docs/hardware-specs.md,docs/verification.md,docs/v2-verification.md -Destination artifacts/portable/docs
     Get-Item artifacts/portable/QuietMSI.exe | Select-Object FullName,Length
     Get-FileHash artifacts/portable/QuietMSI.exe -Algorithm SHA256
 } finally { Pop-Location }

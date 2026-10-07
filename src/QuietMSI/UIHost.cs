@@ -36,7 +36,7 @@ public static class UIHost
             {
                 await form.PollAsync();
                 var hardware = Descendants(form).Where(control => control.Name.StartsWith("Hardware_", StringComparison.Ordinal)).ToArray();
-                if (hardware.Length < 9 || hardware.Any(control => control.Enabled))
+                if (hardware.Length != 6 || hardware.Any(control => control.Enabled))
                     throw new InvalidOperationException("Read-only UI smoke found missing or enabled hardware controls.");
                 if (form.LastSnapshot?.CpuCelsius is not null || form.LastSnapshot?.GpuCelsius is not null)
                     throw new InvalidOperationException("Read-only smoke must not invent sensor values.");

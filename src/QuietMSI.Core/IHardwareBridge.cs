@@ -1,5 +1,10 @@
 namespace QuietMSI.Core;
 
+public interface IControlCapabilityProvider
+{
+    Capability GetCapability(HardwareSnapshot snapshot, ControlKind kind);
+}
+
 public interface IHardwareBridge
 {
     Task<HardwareSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken);
@@ -16,7 +21,7 @@ public class ReadOnlyBridge : IHardwareBridge
             "Provider unavailable", Array.Empty<string>()));
     }
 
-    public Task<ControlResult> ApplyAsync(ControlRequest request, CancellationToken cancellationToken)
+    public virtual Task<ControlResult> ApplyAsync(ControlRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(new ControlResult(false, "This build is read-only. No hardware change was attempted."));

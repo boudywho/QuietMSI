@@ -10,6 +10,7 @@ public sealed class TrayContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _pollTimer;
     private bool _exiting;
     private bool _disposed;
+    private bool _exitPending;
     public MainForm Window { get; }
     public int PollIntervalMilliseconds => _pollTimer.Interval;
 
@@ -22,7 +23,7 @@ public sealed class TrayContext : ApplicationContext
         _menu.Items.Add("&Refresh telemetry", null, async (_, _) => await Window.PollAsync());
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add("E&xit", null, (_, _) => ExitApplication());
-        _tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "QuietMSI · Read-only", ContextMenuStrip = _menu, Visible = true };
+        _tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "QuietMSI · Capability gated", ContextMenuStrip = _menu, Visible = true };
         _tray.DoubleClick += (_, _) => ShowWindow();
         _pollTimer = new System.Windows.Forms.Timer { Interval = 5000 };
         _pollTimer.Tick += PollTick;
@@ -30,6 +31,7 @@ public sealed class TrayContext : ApplicationContext
         Window.Resize += WindowResized;
         Window.FormClosing += ClosingWindow;
         Window.Shown += FirstShown;
+        Window.ApplyCompleted += ApplyCompleted;
         SystemEvents.PowerModeChanged += PowerModeChanged;
         _pollTimer.Start();
     }
@@ -54,6 +56,13 @@ public sealed class TrayContext : ApplicationContext
 
     private void ClosingWindow(object? sender, FormClosingEventArgs e)
     {
+        if (Window.IsApplying)
+        {
+            e.Cancel = true;
+            Window.Hide();
+            if (e.CloseReason != CloseReason.UserClosing) _exitPending = true;
+            return;
+        }
         if (_exiting || e.CloseReason is CloseReason.WindowsShutDown or CloseReason.TaskManagerClosing or CloseReason.ApplicationExitCall) return;
         e.Cancel = true;
         Window.Hide();
@@ -94,12 +103,25 @@ public sealed class TrayContext : ApplicationContext
     public void ExitApplication()
     {
         if (_exiting) return;
+        if (Window.IsApplying)
+        {
+            _exitPending = true;
+            _pollTimer.Stop();
+            Window.ShowOperationStatus("Exit queued; waiting for transaction and readback.");
+            return;
+        }
         _exiting = true;
         _pollTimer.Stop();
         _tray.Visible = false;
         Window.Close();
         Window.Dispose();
         ExitThread();
+    }
+
+    private void ApplyCompleted(object? sender, EventArgs e)
+    {
+        if (_exitPending && !_disposed && Window.IsHandleCreated)
+            Window.BeginInvoke((Action)ExitApplication);
     }
 
     protected override void ExitThreadCore()

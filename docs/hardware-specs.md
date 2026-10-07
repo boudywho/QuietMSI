@@ -67,6 +67,6 @@ Serial sampling uses a killable read-only child of the same executable. WMI time
 
 ## Capability state and remaining work
 
-This release is read-only. Backend ApplyAsync rejects performance, Cooler Boost, battery limit, fan curve, Auto and MUX before any transport call. No force override or writable transport exists. No hardware control is represented as implemented/validated.
+This section records v0.1. Version0.2 enables only the separately verified performance/boost/mode and conservative CPU-curve paths; details and actual restore tests are in v2-verification.md. Unknown firmware, charge limits, GPU/MUX, temperature edits and fan-stop remain unsupported. No force override or raw EC port API.
 
 Before enabling a control: exact model + live EC firmware/WMI identity; exact installed vendor payload + applicable Linux corroboration; valid successful pre-read; masks/bounds; cross-process conflict handling; exact post-read; independently verified sensors; logged allowlisted state only; verified restoration and explicit user authorization for actual write tests. An unknown/failed read prevents the write. Never iterate registers or raw ports. No calibration or BIOS reset.

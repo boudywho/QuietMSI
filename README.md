@@ -2,17 +2,21 @@
 
 A compact, independently written Windows tray application for MSI laptop telemetry research. MIT-licensed source, native C#/.NET 8 WinForms, no WebView/Electron, advertisements, analytics, auto-updater, RGB/peripheral utilities, accounts, or bundled driver.
 
-**Initial release is read-only, not a complete MSI Center replacement.** Performance, Cooler Boost, charge limits, curves, Auto and MUX controls are unavailable until their full safety contracts are verified. They are blocked in the backend, not just grayed out in the UI. No hardware setting changes occur on startup, polling, resume or exit.
+**Version 0.2 corrects the unusable read-only workflow.** One Windows UAC prompt at launch enables actual protected MSI telemetry and verified explicit hardware changes on GF63 Thin 11UCX / EC16R6EMS1.106 / WMI2.8. Performance levels, Cooler Boost and Auto/Advanced fan mode are supported; a conservative CPU-curve editor allows cooling-only increases and exact session-original restoration. Battery limits, GPU/MUX, overclocking and full MSI scenario automation are not implemented. No changes occur on startup, polling, resume or exit.
 
 ## Run
 
 Requires Windows x64 and [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0). This machine already has it. Extract the portable package and run QuietMSI.exe. The executable is framework-dependent; its small size does not include the installed runtime.
 
-The app does not automatically request administrator access. Windows battery/power status and model/BIOS identification work unelevated. This machine requires elevated permission for protected MSI WMI getters; normal mode reports unavailable sensors and the precise error. If you choose to run the verified read-only build as administrator, the narrow telemetry path requires the observed GF63 Thin 11UCX / EC 16R6EMS1.106 / WMI 2.8 match. Other firmware remains unsupported for protected sensors. No elevation bypass, MSI helper service or ACL modification is used.
+The executable requests administrator permission at startup using the standard Windows UAC manifest, as explicitly chosen by the user. No added driver/service, credential handling, ACL modification or signature bypass is used. Installed MSI Foundation service rejects unsigned third-party clients; merely loading its DLL does not grant compatibility, so v0.2 uses standard direct WMI. Existing MSI ACPI provider remains required. If UAC is declined the app does not silently run a broken unelevated control UI. Other firmware models remain blocked.
 
 Close/minimize hides the window to tray. Use the tray menu to reopen or Exit. Diagnostics export is local and may contain machine identity; inspect before sharing. No automatic startup registration.
 
 QuietMSI performs sampling in a short-lived read-only child of the same executable, with a10-second parent-enforced deadline. No installed background service is used. Each sample rechecks device and protected firmware identity; stale readings stay labeled stale. This adds brief process-start overhead and its resource usage is separate from the resident tray process.
+
+### Curve and restoration limits
+
+CPU editor is increases-only versus the table captured when this app session first reads the device. It does not lower fan effort, edit fixed temperature points, change GPU/shared-fan routing, or invent factory defaults. Restore returns that exact captured table only if current table still matches our last change. **Restore before exiting if you want the session-original curve back:** exit itself sends no hardware command, and captured baseline is not a persistent factory-reset database. Auto selects controller mode and clears boost; it does not undo a previously edited table automatically. The existing MSI Center may overwrite settings; conflicts/read-back drift are errors, not silently retried.
 
 ## Telemetry interpretation
 
@@ -42,7 +46,7 @@ dotnet run --project tests/QuietMSI.HardwareTests -c Release
 dotnet run --project tests/QuietMSI.UITests -c Release
 ```
 
-Hardware integration tests issue allowed reads only and assert all writes remain refused. Tests do not exercise live write commands. `QuietMSI.exe --diagnostics <path.json>` writes a real local snapshot and exits; `--smoke-test <path.png>` uses unavailable-data fixtures to test UI without touching hardware.
+Normal hardware integration tests issue reads and refused unsupported requests only. The separately gated `--workflow-approved` / `--curve-approved` test modes actually change hardware and must never be run without informed approval. Actual user-approved tests and exact original-state restoration are recorded in docs/v2-verification.md. `QuietMSI.exe --diagnostics <path.json>` exports actual snapshot; `--smoke-test <path.png>` is a no-hardware UI fixture.
 
 ## Boundaries
 
