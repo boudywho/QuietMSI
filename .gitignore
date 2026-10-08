@@ -1,0 +1,9 @@
+bin/
+obj/
+artifacts/
+.superpowers/
+*.user
+*.suo
+.vs/
+**/test-runtime.log
+tests/**/smoke.png

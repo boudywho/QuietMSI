@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.5.0</Version>
+  </PropertyGroup>
+  <Target Name="GenerateFirmwareResource" BeforeTargets="CoreCompile">
+    <PropertyGroup><Win32Resource>$(IntermediateOutputPath)QuietMSI.res</Win32Resource></PropertyGroup>
+    <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)/../../tools/New-MofResource.ps1&quot; -Mof &quot;$(MSBuildProjectDirectory)/../QuietMSI/Support/QuietMSI.mof&quot; -Output &quot;$(MSBuildProjectDirectory)/$(IntermediateOutputPath)QuietMSI.res&quot;" />
+  </Target>
+</Project>
