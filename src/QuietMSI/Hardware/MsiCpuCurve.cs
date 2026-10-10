@@ -18,14 +18,14 @@ internal static class MsiCpuCurve
         next[0]=fresh[0];
         var transport=new MsiControlTransport();
         transport.Record("PendingCpuCurve",new { Before=expected, After=next, Original=original });
-        using var q=new ManagementObjectSearcher("root\\wmi","SELECT * FROM MSI_ACPI");
+        using var q=new ManagementObjectSearcher("root\\wmi","SELECT * FROM " + FirmwareSupport.ClassName);
         using var rows=q.Get(); var instances=new List<ManagementObject>();
         try
         {
             foreach(ManagementObject row in rows)instances.Add(row);
             if(instances.Count!=1)throw new InvalidOperationException("Ambiguous MSI provider.");
             using var input=instances[0].GetMethodParameters("Set_Fan");
-            using var schema=new ManagementClass("root\\wmi","Package_32",null);
+            using var schema=new ManagementClass("root\\wmi",FirmwareSupport.PacketName,null);
             using var package=schema.CreateInstance() ?? throw new InvalidOperationException("Missing package schema.");
             var bytes=new byte[32];bytes[0]=1;next.CopyTo(bytes,1);package["Bytes"]=bytes;input["Data"]=package;
             using var reply=instances[0].InvokeMethod("Set_Fan",input,null);

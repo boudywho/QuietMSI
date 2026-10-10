@@ -13,6 +13,7 @@ public sealed record HardwareSnapshot(DeviceIdentity Identity, DateTimeOffset Ti
     FanReading CpuFan, FanReading GpuFan, int? BatteryPercent, bool? OnAcPower, string Status, IReadOnlyList<string> Diagnostics)
 {
     public HardwareControlState? Controls { get; init; }
+    public string? GpuTemperatureSource { get; init; }
 }
 public sealed record FanReading(double? TargetPercent, int? Rpm, string Source)
 {

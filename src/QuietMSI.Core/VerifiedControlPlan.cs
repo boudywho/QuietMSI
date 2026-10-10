@@ -22,7 +22,7 @@ public static class VerifiedControlPlan
             case ControlKind.AutomaticFans:
                 if (request.Value is not ("Auto" or "Advanced")) throw new ArgumentException("Only Auto or Advanced mode is approved.");
                 var mode = state.FanMode ?? throw new InvalidOperationException("Missing fan-mode pre-read.");
-                if ((mode & 0x6f) != 0x0d) throw new InvalidOperationException("Unsupported fan mode baseline; Auto change denied.");
+                if (mode is not (0x0d or 0x8d)) throw new InvalidOperationException("Unsupported fan mode baseline; Auto change denied.");
                 var oldBoost = state.Boost ?? throw new InvalidOperationException("Missing Cooler Boost pre-read.");
                 if (request.Value == "Advanced")
                 {
@@ -31,7 +31,7 @@ public static class VerifiedControlPlan
                     for (var i=0;i<6;i++) if (values[i] is <20 or >100 || i>0 && values[i]<values[i-1])
                         throw new InvalidOperationException("Current curve violates conservative fan-safety bounds; Advanced denied.");
                 }
-                changes.Add(new(0xd4, mode, (byte)(request.Value == "Advanced" ? (mode & 0x6f) | 0x80 : mode & 0x6f)));
+                changes.Add(new(0xd4, mode, (byte)(request.Value == "Advanced" ? mode | 0x80 : mode & 0x7f)));
                 changes.Add(new(0x98, oldBoost, (byte)(oldBoost & 0x7f)));
                 break;
             default: throw new InvalidOperationException("This hardware control has no verified write plan.");

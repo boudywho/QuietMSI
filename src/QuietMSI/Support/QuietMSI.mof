@@ -1,0 +1,35 @@
+// QuietMSI's independently authored description of the GF63 firmware interface.
+// Hardware GUID and method IDs are protocol facts read from the live WMI schema.
+#pragma autorecover
+#pragma namespace ("\\\\.\\root\\wmi")
+
+[WMI, Guid("{ABBC0F63-8EA1-11D1-00A0-C90629100000}")]
+class QuietMSI_Packet32
+{
+    [WmiDataId(1), read, write, MAX(32)] uint8 Bytes[];
+};
+
+[WMI, dynamic, provider("WMIProv"), Guid("{ABBC0F6E-8EA1-11D1-00A0-C90629100000}")]
+class QuietMSI_ACPI
+{
+    [key, read] string InstanceName;
+    [read] boolean Active;
+    [WmiMethodId(3), Implemented, read, write]
+    boolean Get_EC([out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
+    [WmiMethodId(13), Implemented, read, write]
+    boolean Get_Temperature([in, out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
+    [WmiMethodId(15), Implemented, read, write]
+    boolean Get_Thermal([in, out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
+    [WmiMethodId(17), Implemented, read, write]
+    boolean Get_Fan([in, out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
+    [WmiMethodId(18), Implemented, read, write]
+    boolean Set_Fan([in, out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
+    [WmiMethodId(25), Implemented, read, write]
+    boolean Get_AP([in, out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
+    [WmiMethodId(27), Implemented, read, write]
+    boolean Get_Data([in, out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
+    [WmiMethodId(28), Implemented, read, write]
+    boolean Set_Data([in, out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
+    [WmiMethodId(29), Implemented, read, write]
+    boolean Get_WMI([out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
+};

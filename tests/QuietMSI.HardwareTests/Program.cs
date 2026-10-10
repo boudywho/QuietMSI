@@ -2,6 +2,34 @@ using QuietMSI.Core;
 using QuietMSI.Hardware;
 using System.Text.Json;
 
+// Explicit elevated acceptance mode only; normal integration tests remain read-only.
+if (args.Length == 2 && args[0] == "--standalone-control-probe")
+{
+    using var ownership = new MachineWriteOwnership();
+    var transport = new MsiControlTransport();
+    transport.VerifyIdentity();
+    var before = transport.ReadState();
+    var performance = before.Performance ?? throw new Exception("Missing performance state");
+    if (performance is not (0xc0 or 0xc1 or 0xc2 or 0xc4)) throw new Exception("Unknown performance encoding");
+    var fresh = transport.ReadState();
+    if (fresh.Performance != performance) throw new Exception("State changed before same-value probe");
+    transport.Record("Pending", new { Test = "Standalone same-value Set_Data", Before = performance, After = performance });
+    transport.Write(new(0xd2, performance, performance));
+    var afterRegister = transport.ReadState();
+    if (afterRegister.Performance != performance || afterRegister.FanMode != before.FanMode || afterRegister.Boost != before.Boost)
+        throw new Exception("Same-value register probe changed state; inspect hardware, no guessed rollback");
+    var table = MsiCpuCurve.ReadTable();
+    MsiCpuCurve.Write(table, (byte[])table.Clone(), (byte[])table.Clone());
+    var after = transport.ReadState();
+    if (after.Performance != before.Performance || after.FanMode != before.FanMode || after.Boost != before.Boost
+        || !after.CpuCurve!.SequenceEqual(before.CpuCurve!) || !after.CpuBreakpoints!.SequenceEqual(before.CpuBreakpoints!))
+        throw new Exception("Same-value setter probe changed stable state; inspect hardware, no guessed rollback");
+    transport.Record("Verified", new { Test = "Standalone same-value Set_Data and Set_Fan", final = after });
+    File.WriteAllText(args[1], JsonSerializer.Serialize(new { Success = true, Identity = MsiControlStateReader.VerifyIdentity(), Before = before, After = after,
+        Setters = new[] { "Set_Data: same current performance byte", "Set_Fan: same current CPU table" }, Note = "Exact current values only; stable profile/mode/boost/curve/temperature points remained unchanged; no retry or guessed rollback" }, new JsonSerializerOptions { WriteIndented = true }));
+    return 0;
+}
+
 if (args.Contains("--ownership-probe"))
 {
     using var first=new MachineWriteOwnership();
@@ -15,6 +43,19 @@ if (args.Contains("--read-worker"))
     return 0;
 }
 if (args.Contains("--blocked-worker")) { await Task.Delay(Timeout.Infinite); return 0; }
+if (args.Contains("--gpu-valid")) { Console.WriteLine("44"); return 0; }
+if (args.Contains("--gpu-invalid")) { Console.WriteLine("N/A"); return 0; }
+if (args.Contains("--gpu-error")) { Console.WriteLine("44"); return 1; }
+
+foreach (byte unvalidatedMode in new byte[] { 0x1d, 0x9d })
+foreach (byte approvedMode in new byte[] { 0x0d, 0x8d })
+{
+    var rejected = false;
+    try { new MsiControlTransport().Write(new(0xd4, unvalidatedMode, approvedMode)); }
+    catch (InvalidOperationException e) when (e.Message == "Register transformation is not allowlisted.") { rejected = true; }
+    if (!rejected) throw new Exception("Unvalidated fan-mode bit reached firmware transport");
+}
+Console.WriteLine("PASS firmware transport refuses unvalidated fan-mode bit before WMI access");
 
 System.Diagnostics.ProcessStartInfo Worker(string flag)
 {
@@ -26,6 +67,25 @@ System.Diagnostics.ProcessStartInfo Worker(string flag)
 }
 int workerPid = 0;
 bool WorkerStopped() { try { using var p = System.Diagnostics.Process.GetProcessById(workerPid); return p.HasExited; } catch (ArgumentException) { return true; } }
+foreach (var invalid in new[] { "", "N/A", "0", "126", "-1", "44\n45", "44.5", "44 C" })
+    if (NvidiaGpuTemperature.Parse(invalid) is not null) throw new Exception("Invalid NVIDIA temperature accepted: " + invalid);
+if (NvidiaGpuTemperature.Parse("44\r\n") != 44) throw new Exception("NVIDIA integer temperature failed to parse");
+var gpuReading = await NvidiaGpuTemperature.ReadAsync(CancellationToken.None, () => Worker("--gpu-valid"));
+if (gpuReading.Celsius != 44 || !gpuReading.Source.Contains("NVIDIA driver")) throw new Exception("Valid NVIDIA worker/source failed");
+foreach (var flag in new[] { "--gpu-invalid", "--gpu-error" })
+    if ((await NvidiaGpuTemperature.ReadAsync(CancellationToken.None, () => Worker(flag))).Celsius is not null) throw new Exception("Invalid NVIDIA worker must remain unavailable");
+var missing = await NvidiaGpuTemperature.ReadAsync(CancellationToken.None, () => new System.Diagnostics.ProcessStartInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".exe")));
+if (missing.Celsius is not null) throw new Exception("Missing NVIDIA executable must remain unavailable");
+var timedGpu = await NvidiaGpuTemperature.ReadAsync(CancellationToken.None, () => Worker("--blocked-worker"), TimeSpan.FromMilliseconds(400), p => workerPid = p.Id);
+if (timedGpu.Celsius is not null || !timedGpu.Source.Contains("timed out") || !WorkerStopped()) throw new Exception("NVIDIA timeout must stop its worker");
+using (var gpuCancel = new CancellationTokenSource(400))
+{
+    var gpuCancelled = false;
+    try { await NvidiaGpuTemperature.ReadAsync(gpuCancel.Token, () => Worker("--blocked-worker"), onStarted: p => workerPid = p.Id); }
+    catch (OperationCanceledException) { gpuCancelled = true; }
+    if (!gpuCancelled || !WorkerStopped()) throw new Exception("NVIDIA cancellation must stop its worker");
+}
+Console.WriteLine("PASS NVIDIA GPU fallback: valid/invalid/nonzero exit/missing tool/timeout/cancellation");
 var deadlineBridge = new WindowsHardwareBridge(() => Worker("--blocked-worker"), TimeSpan.FromMilliseconds(400), p => workerPid = p.Id);
 var timedOut = false;
 try { await deadlineBridge.ReadSnapshotAsync(CancellationToken.None); } catch (TimeoutException) { timedOut = true; }

@@ -1,6 +1,6 @@
 # Third-party notices
 
-QuietMSI source is MIT-licensed (LICENSE). The framework-dependent executable includes Microsoft System.Management 8.0.0 (and System.CodeDom dependency). WindowsDesktop/.NET8 runtime is installed separately, not bundled. These .NET components are distributed under MIT terms by the .NET Foundation and contributors. Source/licensing: https://github.com/dotnet/runtime/blob/main/LICENSE.TXT . All applicable package notices retained below.
+QuietMSI source is MIT-licensed (LICENSE). Version 0.5.0 bundles Microsoft .NET 8 / WindowsDesktop runtime, System.Management 8.0.0 and System.CodeDom. Microsoft component licenses and runtime third-party notices are included in the package's `licenses` folder. These .NET components are distributed under MIT terms by the .NET Foundation and contributors. Source/licensing: https://github.com/dotnet/runtime/blob/main/LICENSE.TXT . Additional package notices retained below.
 
 MIT License
 

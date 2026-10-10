@@ -124,6 +124,19 @@ Test("Transaction refuses changed pre-read and logs before write", () =>
     Assert(!result.Applied && bad.Events.Count(x=>x=="Write")==1,"No retry after mismatch");
 });
 
+Test("Auto and Advanced refuse unvalidated fan-mode bit before any write", () =>
+{
+    foreach (byte mode in new byte[] { 0x1d, 0x9d })
+    foreach (var value in new[] { "Auto", "Advanced" })
+    {
+        var state = new HardwareControlState(0xc1, mode, 0x86, new[] { 38,43,48,54,60,70 }, new[] { 0,55,64,73,76,82 });
+        var transport = new FakeControlTransport(state);
+        var result = new ControlTransaction(transport).Apply(new(ControlKind.AutomaticFans, value));
+        Assert(!result.Applied && !transport.Events.Contains("Write"), "Unvalidated bit 4 must not be cleared or cause a boost write");
+        Assert(transport.State == state, "Rejected mode must leave the complete original state unchanged");
+    }
+});
+
 Test("Advanced mode requires safe existing six-slot curve", () =>
 {
     var state=new HardwareControlState(0xc1,0x0d,6,new[]{38,43,48,54,60,70},new[]{0,55,64,73,76,82});

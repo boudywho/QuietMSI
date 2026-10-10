@@ -13,7 +13,11 @@ public static class UIHost
         if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
             throw new InvalidOperationException("QuietMSI UI must run on an STA thread.");
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+        // Route UI faults to Program's logged fatal-error boundary rather than the
+        // framework's Continue dialog, which can leave an indeterminate controller running.
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
         if (!smokeTest)
         {
             using var context = new TrayContext(bridge);
@@ -36,7 +40,7 @@ public static class UIHost
             {
                 await form.PollAsync();
                 var hardware = Descendants(form).Where(control => control.Name.StartsWith("Hardware_", StringComparison.Ordinal)).ToArray();
-                if (hardware.Length != 6 || hardware.Any(control => control.Enabled))
+                if (hardware.Length != 14 || hardware.Any(control => control.Enabled))
                     throw new InvalidOperationException("Read-only UI smoke found missing or enabled hardware controls.");
                 if (form.LastSnapshot?.CpuCelsius is not null || form.LastSnapshot?.GpuCelsius is not null)
                     throw new InvalidOperationException("Read-only smoke must not invent sensor values.");
@@ -58,6 +62,17 @@ public static class UIHost
         deadline.Start();
         Application.Run(form);
         if (failure is not null) throw new InvalidOperationException("QuietMSI UI smoke failed.", failure);
+    }
+
+    public static void RunStartup(IHardwareBridge bridge)
+    {
+        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        using var context = new TrayContext(bridge, startInTray: true);
+        _ = context.Window.PollAsync();
+        Application.Run(context);
     }
 
     private static IEnumerable<Control> Descendants(Control parent)

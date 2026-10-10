@@ -24,11 +24,11 @@ internal sealed class MsiControlTransport : IControlTransport
         {
             0x98 => (change.Before & 0x7f) == (change.After & 0x7f),
             0xd2 => (change.Before is 0xc0 or 0xc1 or 0xc2 or 0xc4) && (change.After is 0xc0 or 0xc1 or 0xc2 or 0xc4),
-            0xd4 => (change.Before & 0x6f) == 0x0d && (change.After is 0x0d or 0x8d),
+            0xd4 => (change.Before is 0x0d or 0x8d) && (change.After is 0x0d or 0x8d),
             _ => false
         };
         if (!valid) throw new InvalidOperationException("Register transformation is not allowlisted.");
-        using var searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM MSI_ACPI");
+        using var searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM " + FirmwareSupport.ClassName);
         using var rows = searcher.Get();
         var list = new List<ManagementObject>();
         try
@@ -37,7 +37,7 @@ internal sealed class MsiControlTransport : IControlTransport
             if (list.Count != 1) throw new InvalidOperationException("Ambiguous or missing MSI_ACPI instance; write denied.");
             var instance = list[0];
             using var input = instance.GetMethodParameters("Set_Data");
-            using var schema = new ManagementClass("root\\wmi", "Package_32", null);
+            using var schema = new ManagementClass("root\\wmi", FirmwareSupport.PacketName, null);
             using var package = schema.CreateInstance() ?? throw new InvalidOperationException("Package schema unavailable.");
             var payload = new byte[32]; payload[0] = change.Offset; payload[1] = change.After;
             package["Bytes"] = payload; input["Data"] = package;

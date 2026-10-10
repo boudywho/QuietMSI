@@ -14,24 +14,28 @@ public sealed class TrayContext : ApplicationContext
     public MainForm Window { get; }
     public int PollIntervalMilliseconds => _pollTimer.Interval;
 
-    public TrayContext(IHardwareBridge bridge)
+    public TrayContext(IHardwareBridge bridge) : this(bridge, false) { }
+
+    public TrayContext(IHardwareBridge bridge, bool startInTray)
     {
         Window = new MainForm(bridge);
+        if (startInTray) _ = Window.Handle; // Receive the second-launch message even before the first Show.
         // Do not assign ApplicationContext.MainForm: its close semantics would exit the message loop.
         _menu = new ContextMenuStrip();
         _menu.Items.Add("&Open QuietMSI", null, (_, _) => ShowWindow());
         _menu.Items.Add("&Refresh telemetry", null, async (_, _) => await Window.PollAsync());
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add("E&xit", null, (_, _) => ExitApplication());
-        _tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "QuietMSI · Capability gated", ContextMenuStrip = _menu, Visible = true };
+        _tray = new NotifyIcon { Icon = Window.Icon, Text = "QuietMSI · Laptop controls", ContextMenuStrip = _menu, Visible = true };
         _tray.DoubleClick += (_, _) => ShowWindow();
-        _pollTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+        _pollTimer = new System.Windows.Forms.Timer { Interval = startInTray ? 30000 : 5000 };
         _pollTimer.Tick += PollTick;
         Window.VisibleChanged += VisibilityChanged;
         Window.Resize += WindowResized;
         Window.FormClosing += ClosingWindow;
         Window.Shown += FirstShown;
         Window.ApplyCompleted += ApplyCompleted;
+        Window.RestoreRequested += (_, _) => ShowWindow();
         SystemEvents.PowerModeChanged += PowerModeChanged;
         _pollTimer.Start();
     }

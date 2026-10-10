@@ -8,13 +8,17 @@
     <Nullable>enable</Nullable>
     <AssemblyName>QuietMSI</AssemblyName>
     <RootNamespace>QuietMSI</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.6.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/QuietMSI.ico</ApplicationIcon>
     <Description>Native MSI laptop telemetry and verified hardware controls; administrator permission required.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Assets/QuietMSI.ico" LogicalName="QuietMSI.AppIcon.ico" />
     <ProjectReference Include="../QuietMSI.Core/QuietMSI.Core.csproj" />
+    <ProjectReference Include="../QuietMSI.Firmware/QuietMSI.Firmware.csproj" ReferenceOutputAssembly="false" OutputItemType="EmbeddedResource" LogicalName="QuietMSI.Firmware.dll" />
+    <EmbeddedResource Include="Support/QuietMSI.mof" LogicalName="QuietMSI.Firmware.mof" />
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 </Project>

@@ -5,3 +5,5 @@ artifacts/
 *.user
 *.suo
 .vs/
+**/test-runtime.log
+tests/**/smoke.png

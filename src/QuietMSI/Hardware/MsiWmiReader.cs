@@ -11,7 +11,7 @@ internal static class MsiWmiReader
     internal static byte[]? Read(MsiReadKind kind)
     {
         var request = MsiReadRequest.Create(kind);
-        using var searcher = new ManagementObjectSearcher(new ManagementScope("root\\wmi"), new ObjectQuery("SELECT * FROM MSI_ACPI"),
+        using var searcher = new ManagementObjectSearcher(new ManagementScope("root\\wmi"), new ObjectQuery("SELECT * FROM " + FirmwareSupport.ClassName),
             new System.Management.EnumerationOptions { Timeout = TimeSpan.FromSeconds(3), ReturnImmediately = false, Rewindable = false });
         using var instances = searcher.Get();
         ManagementObject? selected = null;
@@ -24,7 +24,7 @@ internal static class MsiWmiReader
             }
             if (selected is null) return null;
             using var input = request.Payload is null ? null : selected.GetMethodParameters(request.Method);
-            using var packageClass = request.Payload is null ? null : new ManagementClass("root\\wmi", "Package_32", null);
+            using var packageClass = request.Payload is null ? null : new ManagementClass("root\\wmi", FirmwareSupport.PacketName, null);
             using var package = packageClass?.CreateInstance();
             if (request.Payload is not null)
             {

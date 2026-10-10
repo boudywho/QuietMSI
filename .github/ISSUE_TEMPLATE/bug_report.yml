@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a reproducible QuietMSI problem
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "QuietMSI is very experimental. Redact personal information from logs and screenshots."
+  - type: input
+    id: versions
+    attributes:
+      label: App and Windows versions
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Laptop model and EC firmware
+      description: "Use model/firmware versions, not serial numbers."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or redacted logs

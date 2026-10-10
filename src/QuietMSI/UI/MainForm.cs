@@ -2,194 +2,352 @@ using QuietMSI.Core;
 
 namespace QuietMSI.UI;
 
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     private readonly Theme _theme = new();
+    private readonly Icon _appIcon;
+    private readonly Bitmap _brandImage;
+    private int D(int value) => LogicalToDeviceUnits(value);
     private readonly IHardwareBridge _bridge;
-    private readonly Label _machine;
-    private readonly Label _identity;
-    private readonly Label _sampling;
-    private readonly Label _current;
-    private readonly Label _result;
-    private readonly Label _cpu;
-    private readonly Label _gpu;
-    private readonly Label _cpuFan;
-    private readonly Label _gpuFan;
-    private readonly Label _battery;
-    private readonly Label _source;
-    private readonly Label _curve;
+    private readonly Label _machine, _sampling, _current, _result, _cpu, _gpu, _cpuFan, _gpuFan, _battery;
+    private readonly Label _settingsHint;
+    private readonly ToolTip _tips = new() { AutoPopDelay = 15000 };
     private readonly NumericUpDown[] _curveInputs = new NumericUpDown[6];
     private readonly Label[] _curveBreakpoints = new Label[6];
     private byte[]? _originalCpuCurve;
     private int[]? _originalCpuBreakpoints;
     private bool _curveDirty;
-    private readonly TextBox _diagnostics;
     private readonly Dictionary<ControlKind, List<Control>> _hardware = new();
     private readonly Dictionary<ControlKind, Label> _reasons = new();
+    private readonly Dictionary<ControlKind, bool> _reasonVisibility = new();
     private readonly CancellationTokenSource _shutdown = new();
-    private bool _polling;
-    private bool _resourcesDisposed;
-    private bool _suspended;
+    private bool _polling, _resourcesDisposed, _suspended;
+    private Task _activePoll = Task.CompletedTask;
+    private bool _applyQueued;
+    private (bool Dark, bool HighContrast)? _appliedPalette;
     private int _sampleGeneration;
     private string? _applyError;
-    private bool _profileDirty;
-    private bool _boostDirty;
-    private bool _fanModeDirty;
-    private bool _renderingState;
+    private bool _profileDirty, _boostDirty, _fanModeDirty, _renderingState;
     public bool IsApplying { get; private set; }
     public Task ActiveApply { get; private set; } = Task.CompletedTask;
     public event EventHandler? ApplyCompleted;
+    public event EventHandler? RestoreRequested;
     public HardwareSnapshot? LastSnapshot { get; private set; }
     public string? LastError { get; private set; }
     public bool IsStale { get; private set; } = true;
 
-    public MainForm(IHardwareBridge bridge)
+    private readonly ThemeSettings _settings;
+    private readonly ComboBox _themeSelector;
+    private readonly DashboardViewport _viewport = new() { AutoScroll = true, AccessibleName = "Telemetry and settings", TabStop = false };
+    private readonly Panel _dashboard = new BufferedPanel();
+    private readonly Dictionary<string, DashboardButton> _navigation = new();
+    private RoundedCard _sensorCard = null!, _profileCard = null!, _coolingCard = null!, _chartCard = null!, _editorCard = null!;
+    private FanCurveChart _chart = null!;
+    private string _page = "Overview";
+    private bool _dashboardLayout;
+    private Func<int> _layoutSensors = null!;
+
+    public MainForm(IHardwareBridge bridge) : this(bridge, ThemeSettings.DefaultPath) { }
+
+    public MainForm(IHardwareBridge bridge, string? themeSettingsPath, IStartupRegistration? startupRegistration = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
+        _settings = new ThemeSettings(themeSettingsPath);
+        _startupRegistration = startupRegistration ?? new StartupRegistration();
         Text = "QuietMSI";
-        AccessibleName = "QuietMSI laptop telemetry and hardware capability status";
+        FormBorderStyle = FormBorderStyle.None;
+        DoubleBuffered = true;
+        SetStyle(ControlStyles.ResizeRedraw, true);
+        AccessibleName = "QuietMSI laptop controls";
         Font = _theme.Body;
-        BackColor = _theme.Background;
-        ForeColor = _theme.Ink;
+        AutoScaleDimensions = new SizeF(96, 96);
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(560, 740);
+        ClientSize = new Size(D(560), D(700));
         MinimumSize = new Size(440, 480);
         StartPosition = FormStartPosition.CenterScreen;
-        Icon = SystemIcons.Application;
+        Icon = _appIcon = AppIcon.Load();
+        using (var headerIcon = AppIcon.Load(64)) _brandImage = headerIcon.ToBitmap();
+        var work = Screen.FromControl(this).WorkingArea;
+        if (Width > work.Width || Height > work.Height) Size = new Size(Math.Min(Width, work.Width), Math.Min(Height, work.Height));
 
-        var header = Stack(_theme.Header, new Padding(18, 10, 18, 10));
-        header.Dock = DockStyle.Top;
-        _machine = TextLabel("Machine identity unavailable", _theme.Heading);
-        _identity = TextLabel("BIOS unavailable · EC firmware unidentified");
-        _sampling = TextLabel("Read-only · Waiting for first sample");
-        foreach (var label in new[] { _machine, _identity, _sampling })
+        var header = new BufferedPanel { Dock = DockStyle.Top, Height = 110 };
+        var mark = new PictureBox { Location = new Point(22, 18), Size = new Size(34, 34), SizeMode = PictureBoxSizeMode.Zoom, Image = _brandImage, AccessibleName = "QuietMSI icon" };
+        var brand = TextLabel("QuietMSI", _theme.Title);
+        brand.Dock = DockStyle.None; brand.Location = new Point(66, 12);
+        _machine = TextLabel("Waiting for device…", _theme.Small);
+        _machine.Dock = DockStyle.None; _machine.AutoSize = false; _machine.AutoEllipsis = true;
+        header.Controls.AddRange(new Control[] { mark, brand, _machine });
+        InitializeChrome(header, mark, brand, _machine);
+        var nav = new FlowLayoutPanel { Location = new Point(22, 68), Width = 260, Height = 36, WrapContents = false };
+        foreach (var page in new[] { "Overview", "Cooling", "Settings" })
         {
-            label.ForeColor = _theme.HeaderInk;
-            header.Controls.Add(label);
+            var button = new DashboardButton(_theme) { Text = page == "Overview" ? "Controls" : page == "Cooling" ? "Fan curve" : "Settings", Name = "Nav_" + page, AccessibleName = page == "Overview" ? "Main controls" : page == "Cooling" ? "CPU fan curve editor" : "Application settings", Navigation = true, Selected = page == _page, Size = new Size(100, 34), Margin = new Padding(0, 0, 4, 0) };
+            button.Click += (_, _) => Navigate(page); _navigation[page] = button; nav.Controls.Add(button);
         }
-        _current = TextLabel("Profile unavailable · Fans unavailable · Boost unavailable");
-        _current.ForeColor = _theme.HeaderInk;
-        header.Controls.Add(_current);
-        _result = TextLabel("Changes require an explicit Apply.");
+        header.Controls.Add(nav);
+        var refresh = NativeButton("Refresh");
+        refresh.AutoSize = false; refresh.Size = new Size(76, 32);
+        refresh.Click += async (_, _) => await PollAsync();
+        _tips.SetToolTip(refresh, "Refresh temperatures and current hardware settings.");
+        _themeSelector = new ThemedComboBox(_theme) { Name = "ThemeMode", AccessibleName = "Appearance: System, Light or Dark", DropDownStyle = ComboBoxStyle.DropDownList, Width = 98 };
+        _themeSelector.Items.AddRange(new object[] { "System", "Light", "Dark" });
+        _themeSelector.SelectedItem = _settings.Read();
+        _tips.SetToolTip(_themeSelector, "Appearance");
+        header.Controls.Add(refresh);
+        void PositionHeader()
+        {
+            var size = TextRenderer.MeasureText(brand.Text, brand.Font);
+            header.Height = D(110);
+            mark.SetBounds(D(22), D(18), D(34), D(34));
+            brand.AutoSize = false; brand.Size = size; brand.Location = new Point(D(66), D(12));
+            refresh.Size = new Size(D(76), D(32));
+            nav.SetBounds(D(22), D(68), Math.Max(D(120), header.Width - D(136)), D(36));
+            _machine.SetBounds(brand.Right + D(14), D(24), Math.Max(0, header.Width - brand.Right - D(172)), D(23));
+            _machine.Visible = _machine.Width >= D(80);
+            LayoutChrome(header);
+            refresh.Location = new Point(header.Width - D(98), D(69));
+            foreach (var button in _navigation.Values) button.Size = new Size(Math.Min(D(112), (nav.Width - D(12)) / 3), D(34));
+        }
+        header.Resize += (_, _) => PositionHeader();
+
+        var footer = new BufferedPanel { Dock = DockStyle.Bottom, Height = 86 };
+        _sampling = TextLabel("Waiting for first sample", _theme.Small);
+        _result = TextLabel("Select a setting, then Apply to confirm.", _theme.Small);
         _result.Name = "ApplyResult";
-        _result.ForeColor = _theme.HeaderInk;
-        header.Controls.Add(_result);
+        _settingsHint = TextLabel("Appearance and startup changes are saved automatically.", _theme.Small);
+        _settingsHint.Name = "SettingsHint"; _settingsHint.Visible = false;
+        foreach (var label in new[] { _sampling, _result, _settingsHint }) { label.Dock = DockStyle.None; label.AutoSize = false; footer.Controls.Add(label); }
+        footer.Resize += (_, _) => {
+            footer.Height = D(86);
+            _sampling.SetBounds(D(22), D(10), Math.Max(D(100), footer.Width - D(44)), D(22));
+            _result.SetBounds(D(22), D(34), Math.Max(D(100), footer.Width - D(44)), D(44));
+            _settingsHint.Bounds = _result.Bounds;
+        };
+        _tips.SetToolTip(footer, "Close or minimize to keep QuietMSI in the tray. Use tray → Exit to quit.");
 
-        var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = _theme.Background, Padding = new Padding(18, 14, 18, 16), AccessibleName = "Telemetry and settings", TabStop = false };
-        var body = Stack(_theme.Background, Padding.Empty);
-        body.Dock = DockStyle.Top;
-        scroll.Controls.Add(body);
-        header.TabIndex = 0;
-        scroll.TabIndex = 1;
-        Controls.Add(scroll);
-        Controls.Add(header);
+        _sensorCard = new RoundedCard(_theme) { Name = "SensorCard" };
+        var cpuTitle = TextLabel("CPU", _theme.Small); var gpuTitle = TextLabel("GPU", _theme.Small);
+        _cpu = TextLabel("Unavailable", _theme.Heading); _cpu.AccessibleName = "CPU temperature";
+        _gpu = TextLabel("Unavailable", _theme.Heading); _gpu.AccessibleName = "GPU temperature";
+        _cpuFan = TextLabel("Fan 1 · Unavailable", _theme.Small);
+        _gpuFan = TextLabel("Fan 2 · Unavailable", _theme.Small);
+        _battery = TextLabel("Battery · Unavailable", _theme.Small);
+        foreach (var c in new[] { cpuTitle, gpuTitle, _cpu, _gpu, _cpuFan, _gpuFan, _battery }) { c.Dock = DockStyle.None; c.AutoSize = false; _sensorCard.Controls.Add(c); }
+        _layoutSensors = () => {
+            var textWidth = Math.Max(D(100), _sensorCard.Width - D(36));
+            var half = textWidth / 2;
+            foreach (var reading in new[] { _cpu, _gpu }) reading.Font = reading.Text == "Unavailable" ? _theme.Heading : half < D(200) ? _theme.CompactReading : _theme.Reading;
+            int HeightFor(Label label, int width) => TextRenderer.MeasureText(label.Text, label.Font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak).Height + 4;
+            cpuTitle.SetBounds(D(18), D(14), half - D(8), D(22)); gpuTitle.SetBounds(D(18) + half, D(14), half - D(8), D(22));
+            _cpu.SetBounds(D(18), D(36), half - D(8), HeightFor(_cpu, half - D(8)));
+            _gpu.SetBounds(D(18) + half, D(36), half - D(8), HeightFor(_gpu, half - D(8)));
+            var top = Math.Max(_cpu.Bottom, _gpu.Bottom) + D(10);
+            _cpuFan.SetBounds(D(18), top, textWidth, HeightFor(_cpuFan, textWidth));
+            _gpuFan.SetBounds(D(18), _cpuFan.Bottom + D(2), textWidth, HeightFor(_gpuFan, textWidth));
+            _battery.SetBounds(D(18), (_gpuFan.Visible ? _gpuFan.Bottom : _cpuFan.Bottom) + D(8), textWidth, HeightFor(_battery, textWidth));
+            return _battery.Bottom + D(14);
+        };
+        _sensorCard.Resize += (_, _) => _layoutSensors();
 
-        var telemetry = Section(body, "Live telemetry");
-        var temperatures = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Top, ColumnCount = 2, Margin = new Padding(0, 4, 0, 8) };
-        temperatures.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        temperatures.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        _cpu = Reading(temperatures, 0, "CPU temperature");
-        _gpu = Reading(temperatures, 1, "GPU temperature");
-        telemetry.Controls.Add(temperatures);
-        _cpuFan = TextLabel("Fan 1 · Unavailable\nSource: unavailable");
-        _gpuFan = TextLabel("Fan 2 · Unavailable\nSource: unavailable");
-        _battery = TextLabel("Battery · Unavailable  |  Power source · Unavailable");
-        _source = TextLabel("Temperature source: unavailable. No sample received.");
-        foreach (var label in new[] { _cpuFan, _gpuFan, _battery }) telemetry.Controls.Add(label);
+        var performance = Stack(_theme.Surface, Padding.Empty);
+        performance.Controls.Add(TextLabel("Performance", _theme.Heading));
 
-        var performance = Section(body, "Performance");
-        var profileRow = ActionRow(performance);
-        var profiles = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160, AccessibleName = "Performance profile", Margin = new Padding(0, 5, 8, 0) };
-        profiles.Items.AddRange(new object[] { "High", "Medium", "Turbo", "Eco" });
-        profiles.SelectedIndex = -1;
-        profiles.SelectedIndexChanged += (_, _) => { if (!_renderingState) _profileDirty = true; };
+        var profiles = new ProfileSelector(_theme) { AccessibleName = "Performance profile", Dock = DockStyle.Top, Margin = new Padding(0, 8, 0, 4) };
+        profiles.SelectedIndexChanged += (_, _) => { if (!_renderingState) { _profileDirty = true; _result.Text = profiles.SelectedItem + " selected · Apply profile to confirm."; } };
         Hardware(performance, ControlKind.PerformanceProfile, profiles, "Profile");
-        profileRow.Controls.Add(profiles);
-        var applyProfile = NativeButton("Apply profile");
+        var profileRow = ActionRow(performance);
+        var applyProfile = NativeButton("Apply profile"); ((DashboardButton)applyProfile).Primary = true;
         applyProfile.Click += (_, _) => { if (profiles.SelectedItem is string value) BeginApply(new(ControlKind.PerformanceProfile, value)); };
         Hardware(performance, ControlKind.PerformanceProfile, applyProfile, "ApplyProfile");
         profileRow.Controls.Add(applyProfile);
+        _current = TextLabel("Profile unavailable · Fans unavailable · Boost unavailable", _theme.Small);
+        performance.Controls.Add(_current);
         Reason(performance, ControlKind.PerformanceProfile);
+        _profileCard = WrapCard(performance, "PerformanceCard");
 
-        var cooling = Section(body, "Cooling");
-        var boostRow = ActionRow(cooling);
-        var boost = new CheckBox { Text = "CoolerBoost", AutoSize = true, AccessibleName = "Proposed CoolerBoost" };
-        boost.CheckedChanged += (_, _) => { if (!_renderingState) _boostDirty = true; };
-        Hardware(cooling, ControlKind.CoolerBoost, boost, "Boost");
-        boost.Margin = new Padding(0, 8, 8, 0);
-        boostRow.Controls.Add(boost);
-        var applyBoost = NativeButton("Apply CoolerBoost");
-        applyBoost.Click += (_, _) => BeginApply(new(ControlKind.CoolerBoost, boost.Checked ? "true" : "false"));
-        Hardware(cooling, ControlKind.CoolerBoost, applyBoost, "ApplyBoost");
-        boostRow.Controls.Add(applyBoost);
-        Reason(cooling, ControlKind.CoolerBoost);
+        var cooling = Stack(_theme.Surface, Padding.Empty);
+        cooling.Controls.Add(TextLabel("Cooling", _theme.Heading));
         var modeRow = ActionRow(cooling);
-        var fanMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160, AccessibleName = "Fan mode: Auto or Advanced using current curve", Margin = new Padding(0, 5, 8, 0) };
-        fanMode.Items.AddRange(new object[] { "Auto", "Advanced" });
-        fanMode.SelectedIndex = 0;
+        var modeLabel = TextLabel("Fan mode", _theme.Small); modeLabel.Margin = new Padding(0, 11, 12, 0); modeRow.Controls.Add(modeLabel);
+        var fanMode = new ThemedComboBox(_theme) { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, AccessibleName = "Fan mode: Auto or Advanced using current curve", Margin = new Padding(0, 6, 10, 0) };
+        fanMode.AccessibleDescription = "Mode only, not a factory reset. Auto follows firmware; Advanced uses the existing curve.";
+        _tips.SetToolTip(fanMode, fanMode.AccessibleDescription);
+        fanMode.Items.AddRange(new object[] { "Auto", "Advanced" }); fanMode.SelectedIndex = -1;
         fanMode.SelectedIndexChanged += (_, _) => { if (!_renderingState) _fanModeDirty = true; };
-        Hardware(cooling, ControlKind.AutomaticFans, fanMode, "FanMode");
-        modeRow.Controls.Add(fanMode);
-        var automatic = NativeButton("Apply fan mode");
+        Hardware(cooling, ControlKind.AutomaticFans, fanMode, "FanMode"); modeRow.Controls.Add(fanMode);
+        var automatic = NativeButton("Apply mode");
         automatic.Click += (_, _) => { if (fanMode.SelectedItem is string value) BeginApply(new(ControlKind.AutomaticFans, value)); };
-        Hardware(cooling, ControlKind.AutomaticFans, automatic, "AutomaticFans");
-        modeRow.Controls.Add(automatic);
+        Hardware(cooling, ControlKind.AutomaticFans, automatic, "AutomaticFans"); modeRow.Controls.Add(automatic);
         Reason(cooling, ControlKind.AutomaticFans);
-        cooling.Controls.Add(TextLabel("Advanced uses the existing curve; Auto hands control to firmware. Mode only, not a factory reset."));
-        _curve = TextLabel("Current curve · Unavailable");
-        _curve.AccessibleName = "Current fan curve, read-only";
-        cooling.Controls.Add(_curve);
-        cooling.Controls.Add(TextLabel("CPU curve · Increases only from this session's captured original.\nFixed temperatures; GPU table and fan mode are unchanged."));
-        var curveRow = ActionRow(cooling);
+        cooling.Controls.Add(TextLabel("Auto follows firmware. Advanced uses the current curve.", _theme.Small));
+        var boostRow = ActionRow(cooling);
+        var boost = new CheckBox { Text = "Cooler Boost", AutoSize = true, AccessibleName = "Proposed CoolerBoost", Margin = new Padding(0, 10, 16, 0) };
+        boost.CheckedChanged += (_, _) => { if (!_renderingState) _boostDirty = true; };
+        Hardware(cooling, ControlKind.CoolerBoost, boost, "Boost"); boostRow.Controls.Add(boost);
+        var applyBoost = NativeButton("Apply boost");
+        applyBoost.Click += (_, _) => BeginApply(new(ControlKind.CoolerBoost, boost.Checked ? "true" : "false"));
+        Hardware(cooling, ControlKind.CoolerBoost, applyBoost, "ApplyBoost"); boostRow.Controls.Add(applyBoost);
+        Reason(cooling, ControlKind.CoolerBoost);
+        _tips.SetToolTip(boost, "Run fans at maximum effort. Select the checkbox, then Apply boost.");
+        _coolingCard = WrapCard(cooling, "CoolingCard");
+
+        _chartCard = new RoundedCard(_theme) { Name = "CurrentCurveCard" };
+        var chartTitle = TextLabel("CPU fan curve", _theme.Heading); chartTitle.Dock = DockStyle.None; chartTitle.Location = new Point(18, 14);
+        var edit = NativeButton("Edit curve →"); edit.AutoSize = false; edit.Size = new Size(112, 32); edit.Click += (_, _) => Navigate("Cooling");
+        _chart = new FanCurveChart(_theme);
+        _chartCard.Controls.AddRange(new Control[] { chartTitle, edit, _chart });
+        _chartCard.Resize += (_, _) => { edit.Location = new Point(_chartCard.Width - D(130), D(10)); _chart.SetBounds(D(18), D(52), _chartCard.Width - D(36), _chartCard.Height - D(66)); };
+
+        var editor = Stack(_theme.Surface, Padding.Empty);
+        editor.Controls.Add(TextLabel("Tune CPU cooling", _theme.Heading));
+        editor.Controls.Add(TextLabel("Raise fan effort at each fixed temperature. Values are percentages.", _theme.Small));
+        var curveRow = ActionRow(editor);
         for (var i = 0; i < 6; i++)
         {
-            var point = Stack(_theme.Surface, Padding.Empty);
-            point.Dock = DockStyle.None;
-            point.Width = 94;
-            point.Margin = new Padding(0, 0, 8, 4);
-            var label = TextLabel("Temperature unavailable");
-            label.Name = "CurveBreakpoint" + i;
-            _curveBreakpoints[i] = label;
-            point.Controls.Add(label);
-            var input = new NumericUpDown { Width = 84, Minimum = 0, Maximum = 100, DecimalPlaces = 0, AccessibleName = "CPU curve point " + (i + 1) + " percentage" };
+            var point = Stack(_theme.Surface, Padding.Empty); point.Dock = DockStyle.None; point.AutoSize = false; point.Height = D(60); point.Width = 70; point.Margin = new Padding(0, 8, 8, 8);
+            var label = TextLabel("— °C", _theme.Small); label.Name = "CurveBreakpoint" + i; _curveBreakpoints[i] = label; point.Controls.Add(label);
+            var input = new ThemedNumeric(_theme) { Width = 66, Minimum = 0, Maximum = 100, DecimalPlaces = 0, AccessibleName = "CPU curve point " + (i + 1) + " percentage" };
             input.ValueChanged += (_, _) => { if (!_renderingState) _curveDirty = true; };
-            _curveInputs[i] = input;
-            Hardware(cooling, ControlKind.FanCurve, input, "CpuCurve" + i);
-            point.Controls.Add(input);
-            curveRow.Controls.Add(point);
+            _curveInputs[i] = input; Hardware(editor, ControlKind.FanCurve, input, "CpuCurve" + i); point.Controls.Add(input); curveRow.Controls.Add(point);
         }
-        var curveActions = ActionRow(cooling);
-        var applyCurve = NativeButton("Apply CPU curve");
+        curveRow.Resize += (_, _) => {
+            var columns = curveRow.ClientSize.Width < D(400) ? 3 : 6;
+            foreach (Control point in curveRow.Controls)
+            {
+                point.Width = Math.Max(D(64), curveRow.ClientSize.Width / columns - D(8));
+                foreach (Control input in point.Controls) if (input is NumericUpDown) input.Width = point.Width;
+            }
+        };
+        var curveActions = ActionRow(editor);
+        var applyCurve = NativeButton("Apply CPU curve"); ((DashboardButton)applyCurve).Primary = true;
         applyCurve.Click += (_, _) => BeginApply(new(ControlKind.FanCurve, string.Join(',', _curveInputs.Select(input => ((int)input.Value).ToString(System.Globalization.CultureInfo.InvariantCulture)))));
-        Hardware(cooling, ControlKind.FanCurve, applyCurve, "ApplyCurve");
-        curveActions.Controls.Add(applyCurve);
+        Hardware(editor, ControlKind.FanCurve, applyCurve, "ApplyCurve"); curveActions.Controls.Add(applyCurve);
         var restoreCurve = NativeButton("Restore captured original");
         restoreCurve.Click += (_, _) => BeginApply(new(ControlKind.FanCurve, "Restore"));
-        Hardware(cooling, ControlKind.FanCurve, restoreCurve, "RestoreCurve");
-        curveActions.Controls.Add(restoreCurve);
-        Reason(cooling, ControlKind.FanCurve);
+        Hardware(editor, ControlKind.FanCurve, restoreCurve, "RestoreCurve"); curveActions.Controls.Add(restoreCurve);
+        editor.Controls.Add(TextLabel("Restore returns the curve captured when this session started. Restore before quitting if you want those values back.", _theme.Small));
+        Reason(editor, ControlKind.FanCurve);
+        _editorCard = WrapCard(editor, "CurveEditorCard");
 
-        var evidence = Section(body, "Safety & diagnostics");
-        evidence.Controls.Add(_source);
-        evidence.Controls.Add(TextLabel("No changes on startup, selection, resume or exit. Only Apply sends a request."));
-        _diagnostics = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Height = 86, Dock = DockStyle.Top, Text = "No sample received. Diagnostics will appear here.", AccessibleName = "Provider diagnostics", BackColor = _theme.Surface, ForeColor = _theme.Ink };
-        evidence.Controls.Add(_diagnostics);
-        var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, WrapContents = true, Margin = Padding.Empty };
-        var refresh = NativeButton("&Refresh");
-        refresh.Click += async (_, _) => await PollAsync();
-        refresh.TabIndex = 0;
-        var export = NativeButton("Export &diagnostics…");
-        export.ForeColor = _theme.Accent;
-        export.Click += async (_, _) => await ChooseDiagnosticsPathAsync();
-        refresh.ForeColor = _theme.Ink;
-        header.Controls.Add(refresh);
-        Shown += (_, _) => refresh.Focus();
-        actions.Controls.Add(export);
-        evidence.Controls.Add(actions);
-        evidence.Controls.Add(TextLabel("Close or minimize keeps QuietMSI in the tray. Use tray → Exit to quit."));
-        RefreshCapabilities();
+        _dashboard.Controls.AddRange(new Control[] { _sensorCard, _profileCard, _coolingCard, _chartCard, _editorCard });
+        InitializeSettings();
+        _viewport.Dock = DockStyle.Fill; _viewport.Controls.Add(_dashboard);
+        Controls.Add(_viewport); Controls.Add(footer); Controls.Add(header);
+        _viewport.SizeChanged += (_, _) => LayoutDashboard();
+        _themeSelector.SelectedIndexChanged += (_, _) => { ApplyTheme(); if (!_settings.Write((string)_themeSelector.SelectedItem!)) _result.Text = "Appearance changed; preference could not be saved."; };
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+        Shown += (_, _) => { PositionHeader(); ApplyTheme(true); LayoutDashboard(); refresh.Focus(); };
+        Shown += (_, _) => StartupLoaded = LoadStartupAsync();
+        PositionHeader(); ApplyTheme(); RefreshCapabilities(); LayoutDashboard();
+    }
+    private void OnUserPreferenceChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category is not (Microsoft.Win32.UserPreferenceCategory.General or Microsoft.Win32.UserPreferenceCategory.Color or Microsoft.Win32.UserPreferenceCategory.VisualStyle or Microsoft.Win32.UserPreferenceCategory.Accessibility)) return;
+        try { if (!IsDisposed && IsHandleCreated) BeginInvoke(new Action(() => { if (!IsDisposed) ApplyTheme(); })); }
+        catch (InvalidOperationException) { /* Handle was destroyed during shutdown. */ }
     }
 
+    private void ApplyTheme(bool force = false)
+    {
+        var palette = ((string?)_themeSelector.SelectedItem == "Dark" || ((string?)_themeSelector.SelectedItem == "System" && ThemeSettings.SystemDark()), SystemInformation.HighContrast);
+        if (!force && _appliedPalette == palette) return;
+        _appliedPalette = palette;
+        using var viewportUpdate = _viewport.PreserveViewport();
+        _theme.Dark = palette.Item1;
+        BackColor = _theme.Background; ForeColor = _theme.Ink;
+        void Paint(Control root)
+        {
+            foreach (Control control in root.Controls)
+            {
+                control.BackColor = control == _viewport || control == _dashboard ? _theme.Background : _theme.Surface;
+                control.ForeColor = control is Label label && label.Font.Size < _theme.Heading.Size ? _theme.Muted : _theme.Ink;
+                if (control is Button button) button.UseVisualStyleBackColor = false;
+                if (control is TextBox box) box.BorderStyle = BorderStyle.FixedSingle;
+                NativeAppearance.Apply(control, _theme.Dark);
+                if (control is ComboBox combo) combo.FlatStyle = FlatStyle.Flat;
+                Paint(control); control.Invalidate();
+            }
+        }
+        NativeAppearance.Apply(this, _theme.Dark);
+        Paint(this); _cpu.ForeColor = _gpu.ForeColor = _theme.Ink; _machine.ForeColor = _theme.Ink; _current.ForeColor = _theme.Accent;
+        Invalidate(true);
+    }
+
+    private RoundedCard WrapCard(TableLayoutPanel content, string name)
+    {
+        var card = new RoundedCard(_theme) { Name = name };
+        content.Dock = DockStyle.Fill; content.AutoSize = false; content.Padding = Padding.Empty; content.Margin = Padding.Empty;
+        card.Controls.Add(content); return card;
+    }
+
+    private void Navigate(string page)
+    {
+        if (_page == page) return;
+        _page = page;
+        _result.Visible = page != "Settings"; _settingsHint.Visible = page == "Settings";
+        foreach (var (name, button) in _navigation) { button.Selected = name == page; button.Invalidate(); }
+        _viewport.AutoScrollPosition = Point.Empty; LayoutDashboard();
+    }
+
+    private void LayoutDashboard()
+    {
+        if (_dashboardLayout || _sensorCard is null) return;
+        using var viewportUpdate = _viewport.PreserveViewport();
+        _dashboardLayout = true;
+        _viewport.SuspendLayout();
+        _dashboard.SuspendLayout();
+        try
+        {
+            var width = Math.Max(D(300), _viewport.ClientSize.Width - D(44));
+            var gap = D(12);
+            var wide = width >= D(900);
+            _dashboard.SetBounds(D(22) + _viewport.AutoScrollPosition.X, D(12) + _viewport.AutoScrollPosition.Y, width, _dashboard.Height);
+            _sensorCard.Visible = _profileCard.Visible = _coolingCard.Visible = _page == "Overview";
+            _chartCard.Visible = _page == "Cooling" || (_page == "Overview" && wide);
+            _editorCard.Visible = _page == "Cooling";
+            _appearanceCard.Visible = _startupCard.Visible = _updateCard.Visible = _aboutCard.Visible = _page == "Settings";
+            _chartCard.Controls.OfType<Button>().Single().Visible = _page == "Overview";
+            int Fit(RoundedCard card, int x, int y, int w)
+            {
+                card.SetBounds(x, y, w, card.Height);
+                var content = (TableLayoutPanel)card.Controls[0];
+                content.Width = w - card.Padding.Horizontal;
+                content.PerformLayout();
+                card.Height = content.GetPreferredSize(new Size(content.Width, 0)).Height + card.Padding.Vertical;
+                card.Visible = true;
+                return card.Bottom + gap;
+            }
+            if (_page == "Overview")
+            {
+                var left = wide ? (width - gap) / 2 : width;
+                _sensorCard.SetBounds(0, 0, left, _sensorCard.Height);
+                _sensorCard.Height = _layoutSensors(); _sensorCard.Visible = true;
+                var x = wide ? left + gap : 0;
+                var y = Fit(_profileCard, x, wide ? 0 : _sensorCard.Bottom + gap, wide ? width - left - gap : width);
+                Fit(_coolingCard, x, y, _profileCard.Width);
+                if (wide) { _chartCard.SetBounds(0, _sensorCard.Bottom + gap, left, D(240)); _chartCard.Visible = true; }
+            }
+            else if (_page == "Cooling")
+            {
+                _chartCard.SetBounds(0, 0, width, D(240)); _chartCard.Visible = true;
+                Fit(_editorCard, 0, _chartCard.Bottom + gap, width);
+            }
+            else
+            {
+                var y = Fit(_appearanceCard, 0, 0, width);
+                y = Fit(_startupCard, 0, y, width);
+                y = Fit(_updateCard, 0, y, width);
+                Fit(_aboutCard, 0, y, width);
+            }
+            // Visible reports false for every descendant while the tray window is hidden.
+            // Measure the selected page explicitly so background samples cannot collapse it.
+            var cards = _page == "Overview"
+                ? wide ? new[] { _sensorCard, _profileCard, _coolingCard, _chartCard } : new[] { _sensorCard, _profileCard, _coolingCard }
+                : _page == "Cooling" ? new[] { _chartCard, _editorCard } : new[] { _appearanceCard, _startupCard, _updateCard, _aboutCard };
+            _dashboard.Height = cards.Max(c => c.Bottom) + D(12);
+        }
+        finally { _dashboard.ResumeLayout(true); _viewport.ResumeLayout(true); _dashboardLayout = false; }
+    }
     private TableLayoutPanel Stack(Color background, Padding padding) => new()
     {
         AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1,
@@ -197,38 +355,16 @@ public sealed class MainForm : Form
         ColumnStyles = { new ColumnStyle(SizeType.Percent, 100) }
     };
 
-    private TableLayoutPanel Section(TableLayoutPanel body, string title)
-    {
-        var section = Stack(_theme.Surface, new Padding(12, 8, 12, 8));
-        section.Margin = new Padding(0, 0, 0, 8);
-        section.Controls.Add(TextLabel(title, _theme.Heading));
-        body.Controls.Add(section);
-        return section;
-    }
-
-    private Label TextLabel(string text, Font? font = null) => new()
+    private Label TextLabel(string text, Font? font = null) => new BufferedLabel()
     {
         Text = text, AutoSize = true, Dock = DockStyle.Top, Font = font ?? _theme.Body,
-        ForeColor = _theme.Muted, Margin = new Padding(0, 1, 0, 3), UseMnemonic = false,
-        AccessibleName = text
+        ForeColor = _theme.Muted, Margin = new Padding(0, 1, 0, 3), UseMnemonic = false
     };
 
-    private Label Reading(TableLayoutPanel row, int column, string title)
-    {
-        var group = Stack(_theme.Surface, Padding.Empty);
-        group.Controls.Add(TextLabel(title));
-        var value = TextLabel("Unavailable", _theme.Reading);
-        value.ForeColor = _theme.Ink;
-        value.AccessibleName = title;
-        group.Controls.Add(value);
-        row.Controls.Add(group, column, 0);
-        return value;
-    }
-
-    private Button NativeButton(string text) => new()
+    private Button NativeButton(string text) => new DashboardButton(_theme)
     {
         Text = text, AccessibleName = text, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
-        MinimumSize = new Size(0, 32), Margin = new Padding(0, 4, 0, 5), UseVisualStyleBackColor = true
+        MinimumSize = new Size(0, 32), Margin = new Padding(0, 4, 8, 5), UseVisualStyleBackColor = true
     };
 
     private static FlowLayoutPanel ActionRow(TableLayoutPanel section)
@@ -265,19 +401,32 @@ public sealed class MainForm : Form
 
     private void RefreshCapabilities()
     {
+        using var viewportUpdate = _viewport.PreserveViewport();
+        var layoutChanged = false;
         foreach (var (kind, label) in _reasons)
         {
             var capability = CapabilityFor(kind);
-            var enabled = capability.Kind == kind && capability.CanWrite && ValidState(kind) && !IsStale && !_polling && !IsApplying && !_suspended;
-            // Only expose implemented, state-validated Apply workflows.
-            enabled &= kind is ControlKind.PerformanceProfile or ControlKind.CoolerBoost or ControlKind.AutomaticFans or ControlKind.FanCurve;
+            var available = capability.Kind == kind && capability.CanWrite && ValidState(kind) && !IsStale && !_suspended;
+            // A safe background read need not disable a fresh focused draft input. Actions remain serialized.
+            available &= kind is ControlKind.PerformanceProfile or ControlKind.CoolerBoost or ControlKind.AutomaticFans or ControlKind.FanCurve;
+            var enabled = available && !IsApplying;
             if (_hardware.TryGetValue(kind, out var controls)) foreach (var control in controls) control.Enabled = enabled;
             var reason = kind == ControlKind.FanCurve && !ValidCpuCurveState()
                 ? "A complete captured CPU table, unchanged fixed temperatures and preserved terminal cap are required. " + capability.Reason
                 : capability.Reason;
-            label.Text = (IsApplying ? "Applying · " : IsStale ? "Fresh sample required · " : enabled ? "Ready · " : "Read-only · ") + reason;
-            label.Visible = !enabled;
+            var text = IsApplying ? "Applying · Waiting for verification."
+                : IsStale ? "Fresh sample required · Refresh to check firmware controls."
+                : kind == ControlKind.FanCurve && !ValidCpuCurveState() ? "Read-only · A complete, verified CPU curve is required."
+                : "Read-only · Firmware control is unavailable for this device.";
+            var visibilityChanged = !_reasonVisibility.TryGetValue(kind, out var wasVisible) || wasVisible != !available;
+            layoutChanged |= visibilityChanged || (!available && label.Text != text);
+            _reasonVisibility[kind] = !available;
+            label.Text = text;
+            label.AccessibleDescription = reason;
+            SetTip(label, reason);
+            if (visibilityChanged) label.Visible = !available;
         }
+        if (layoutChanged) LayoutDashboard();
     }
 
     private bool ValidState(ControlKind kind) => kind switch
@@ -348,6 +497,14 @@ public sealed class MainForm : Form
 
     public async Task ApplyControlAsync(ControlRequest request)
     {
+        if (_applyQueued || IsApplying || IsDisposed || _shutdown.IsCancellationRequested) return;
+        if (_polling)
+        {
+            _applyQueued = true;
+            _result.Text = "Waiting for the current sample before applying…";
+            try { await _activePoll; }
+            finally { _applyQueued = false; }
+        }
         UpdateFreshness(DateTimeOffset.UtcNow);
         var cap = CapabilityFor(request.Kind);
         if (IsDisposed || _shutdown.IsCancellationRequested || IsApplying || _polling || _suspended || IsStale || !ValidState(request.Kind) || !cap.CanWrite || cap.Kind != request.Kind) return;
@@ -370,7 +527,7 @@ public sealed class MainForm : Form
             if (request.Kind == ControlKind.AutomaticFans) _fanModeDirty = false;
             if (request.Kind == ControlKind.FanCurve) _curveDirty = false;
             // Poll even a failed transaction: the backend may have rolled back after a write.
-            await PollAsync(true);
+            await StartPoll(true);
             if (IsDisposed || token.IsCancellationRequested) return;
             _result.Text = (result.Applied ? "Backend verified · " : "Apply failed · ") + result.Message;
             if (result.Applied && (IsStale || !ReadbackMatches(request)))
@@ -385,6 +542,7 @@ public sealed class MainForm : Form
         {
             if (!IsDisposed && !token.IsCancellationRequested)
             {
+                RuntimeLog.Write("Apply", exception);
                 LastError = _applyError = exception.Message;
                 _result.Text = "Apply failed · " + exception.Message;
                 MarkStale("Transaction state unknown; Refresh required");
@@ -421,50 +579,42 @@ public sealed class MainForm : Form
         await File.WriteAllTextAsync(path, json, _shutdown.Token);
     }
 
-    private async Task ChooseDiagnosticsPathAsync()
+    public Task PollAsync() => StartPoll(false);
+
+    private Task StartPoll(bool readback)
     {
-        using var dialog = new SaveFileDialog
-        {
-            Title = "Export QuietMSI diagnostics", Filter = "JSON diagnostics (*.json)|*.json",
-            FileName = "QuietMSI-diagnostics.json", DefaultExt = "json", AddExtension = true, OverwritePrompt = true
-        };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        try
-        {
-            await ExportDiagnosticsAsync(dialog.FileName);
-            if (!IsDisposed) MessageBox.Show(this, "Diagnostics exported. Review device identity before sharing this file.", "QuietMSI", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
-        catch (Exception exception)
-        {
-            if (!IsDisposed) MessageBox.Show(this, "Could not export diagnostics: " + exception.Message, "QuietMSI", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
+        if (_polling) return _activePoll;
+        return _activePoll = PollAsync(readback);
     }
 
-    public Task PollAsync() => PollAsync(false);
+    private void SetTip(Control control, string? text)
+    {
+        if (_tips.GetToolTip(control) != text) _tips.SetToolTip(control, text);
+    }
 
     private async Task PollAsync(bool readback)
     {
         if (_polling || (IsApplying && !readback) || _suspended || IsDisposed || _shutdown.IsCancellationRequested) return;
         _polling = true;
-        RefreshCapabilities();
         var generation = _sampleGeneration;
         var token = _shutdown.Token;
         try
         {
             var snapshot = await _bridge.ReadSnapshotAsync(token);
             if (IsDisposed || token.IsCancellationRequested || _suspended || generation != _sampleGeneration) return;
+            using var viewportUpdate = _viewport.PreserveViewport();
             LastSnapshot = snapshot;
             LastError = _applyError;
             IsStale = DateTimeOffset.UtcNow - snapshot.Timestamp > TimeSpan.FromSeconds(45);
-            _machine.Text = $"{snapshot.Identity.Manufacturer} {snapshot.Identity.Model}";
-            _identity.Text = $"BIOS {snapshot.Identity.Bios} · EC {snapshot.Identity.EcFirmware ?? "unidentified"}";
-            _sampling.Text = $"{(_bridge is IControlCapabilityProvider ? "Backend capability gated" : "Read-only")} · {(IsStale ? "Stale sample" : "Last sample")} {snapshot.Timestamp.ToLocalTime():HH:mm:ss}";
+            _machine.Text = snapshot.Identity.Manufacturer == "Micro-Star International Co., Ltd." ? snapshot.Identity.Model : $"{snapshot.Identity.Manufacturer} {snapshot.Identity.Model}";
+            _machine.AccessibleDescription = $"BIOS {snapshot.Identity.Bios} · EC {snapshot.Identity.EcFirmware ?? "unidentified"}";
+            SetTip(_machine, _machine.AccessibleDescription);
+            _sampling.Text = $"{(_bridge is IControlCapabilityProvider ? "Live" : "Read-only")} · {(IsStale ? "Stale sample" : "Updated")} {snapshot.Timestamp.ToLocalTime():HH:mm:ss}";
             _current.Text = $"Profile {Profile(snapshot.Controls?.Performance)} · Fans {FanMode(snapshot.Controls?.FanMode)} · Boost {(snapshot.Controls?.Boost is byte boost ? ((boost & 0x80) != 0 ? "On" : "Off") : "unavailable")}";
             _renderingState = true;
             if (!_profileDirty && snapshot.Controls?.Performance is byte performance)
             {
-                var selector = (ComboBox)_hardware[ControlKind.PerformanceProfile][0];
+                var selector = (ProfileSelector)_hardware[ControlKind.PerformanceProfile][0];
                 selector.SelectedItem = Profile(performance);
             }
             if (!_boostDirty && snapshot.Controls?.Boost is byte boostState)
@@ -472,32 +622,36 @@ public sealed class MainForm : Form
             if (!_fanModeDirty && snapshot.Controls?.FanMode is byte modeState)
                 ((ComboBox)_hardware[ControlKind.AutomaticFans][0]).SelectedItem = FanMode(modeState);
             _renderingState = false;
-            var curve = snapshot.Controls?.CpuCurve;
-            var points = snapshot.Controls?.CpuBreakpoints;
-            _curve.Text = curve is not null && points is not null && curve.Count == points.Count && curve.Count > 0
-                ? "Current CPU curve · " + string.Join(" · ", points.Zip(curve, (temperature, target) => $"{temperature}°C → {target}%"))
-                : "Current CPU curve · Unavailable";
             RenderCpuCurve(snapshot.Controls);
+            var layoutChanged = (_cpu.Text == "Unavailable") != (Temperature(snapshot.CpuCelsius) == "Unavailable")
+                || (_gpu.Text == "Unavailable") != (Temperature(snapshot.GpuCelsius) == "Unavailable")
+                || _cpuFan.Text != Fan("Fan 1", snapshot.CpuFan) || _gpuFan.Text != Fan("Fan 2", snapshot.GpuFan);
             _cpu.Text = Temperature(snapshot.CpuCelsius);
             _gpu.Text = Temperature(snapshot.GpuCelsius);
-            _cpu.Font = _cpu.Text == "Unavailable" ? _theme.Heading : _theme.Reading;
-            _gpu.Font = _gpu.Text == "Unavailable" ? _theme.Heading : _theme.Reading;
             _cpuFan.Text = Fan("Fan 1", snapshot.CpuFan);
             _gpuFan.Text = Fan("Fan 2", snapshot.GpuFan);
+            _cpuFan.AccessibleDescription = snapshot.CpuFan.Source; _gpuFan.AccessibleDescription = snapshot.GpuFan.Source;
+            SetTip(_cpuFan, snapshot.CpuFan.Source); SetTip(_gpuFan, snapshot.GpuFan.Source);
             _gpuFan.Visible = snapshot.GpuFan.Rpm is not null || snapshot.GpuFan.TargetPercent is not null;
             _battery.Text = $"Battery · {(snapshot.BatteryPercent is >= 0 and <= 100 ? $"{snapshot.BatteryPercent}%" : "Unavailable")}  |  Power · {(snapshot.OnAcPower is true ? "AC" : snapshot.OnAcPower is false ? "Battery" : "Unavailable")}";
-            _source.Text = "Provider / temperature status: " + snapshot.Status;
-            _diagnostics.Text = snapshot.Diagnostics.Count == 0 ? snapshot.Status : string.Join(Environment.NewLine, snapshot.Diagnostics);
-            RefreshCapabilities();
+            _chart.SetData(snapshot.Controls);
+            if (layoutChanged && _page == "Overview") LayoutDashboard();
+            _sampling.AccessibleDescription = snapshot.Status;
+            _cpu.AccessibleDescription = snapshot.Status;
+            _gpu.AccessibleDescription = snapshot.GpuTemperatureSource ?? snapshot.Status;
+            SetTip(_cpu, snapshot.Status);
+            SetTip(_gpu, _gpu.AccessibleDescription);
+            SetTip(_sampling, snapshot.Status);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception exception)
         {
             if (!IsDisposed && !token.IsCancellationRequested)
             {
+                if (LastError != exception.Message) RuntimeLog.Write("Sample", exception);
                 LastError = exception.Message;
                 MarkStale("Sample failed: " + exception.Message);
-                _diagnostics.Text = "Read failed: " + exception.Message + Environment.NewLine + (readback ? "Apply returned, but UI readback failed. Inspect the backend result; Refresh before another change." : "This refresh sent no hardware command. Try Refresh or export diagnostics.");
+                _result.Text = "Refresh failed · " + exception.Message;
             }
         }
         finally { _polling = false; if (!IsDisposed) RefreshCapabilities(); }
@@ -520,6 +674,7 @@ public sealed class MainForm : Form
 
     private void MarkStale(string reason)
     {
+        using var viewportUpdate = _viewport.PreserveViewport();
         IsStale = true;
         _sampling.Text = "Read-only · Stale · " + reason;
         RefreshCapabilities();
@@ -534,7 +689,7 @@ public sealed class MainForm : Form
     {
         var measured = reading.Rpm is >= 0 and <= 30000 ? $"{reading.Rpm} RPM reported" : "Measured RPM unavailable";
         var target = reading.TargetPercent is >= 0 and <= 150 ? $" · Target {reading.TargetPercent:0.#}% (not RPM)" : "";
-        return $"{name} · {measured}{target}\nSource: {reading.Source}";
+        return $"{name} · {measured}{target}";
     }
 
     protected override void Dispose(bool disposing)
@@ -542,9 +697,13 @@ public sealed class MainForm : Form
         if (disposing && !_resourcesDisposed)
         {
             _resourcesDisposed = true;
+            Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             _shutdown.Cancel();
             _shutdown.Dispose();
             base.Dispose(disposing);
+            _tips.Dispose();
+            _brandImage.Dispose();
+            _appIcon.Dispose();
             _theme.Dispose();
             return;
         }

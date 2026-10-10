@@ -1,5 +1,19 @@
 # Hardware protocol specification
 
+## Current implementation (0.6.0)
+
+The historical investigation below records the original read-only milestone.
+QuietMSI now uses its independently authored `QuietMSI_ACPI` and
+`QuietMSI_Packet32` classes, and bundles the schema resource under Program Files.
+MSI Center and its proprietary provider DLL are not required. Exact identity
+checks still restrict writes to GF63 Thin 11UCX / EC16R6EMS1.106 / WMI2.8.
+Performance, Cooler Boost, Auto/Advanced mode and conservative CPU curve changes
+are implemented with fresh pre-state, conflict checks, a local journal and exact
+readback. Other controls remain unsupported. See the README and
+[standalone verification](standalone-verification.md) for current behavior.
+
+## Historical read-only investigation (0.1)
+
 ## Evidence and local identity
 
 Observed machine: Micro-Star International GF63 Thin 11UCX, BIOS E16R6IMS.112. Separately approved read-only elevated probes returned EC 16R6EMS1.106 and WMI 2.8, normal 32-byte response packets with success flag 1. BIOS and EC identifiers are distinct.

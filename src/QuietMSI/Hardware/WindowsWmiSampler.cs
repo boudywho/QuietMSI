@@ -72,6 +72,15 @@ public sealed class WindowsWmiSampler : ReadOnlyBridge
         {
             warnings.Add("Protected MSI telemetry needs matching live firmware/WMI identity and Windows permission. No automatic elevation is performed.");
         }
+        var gpuSource = gpu is not null ? "MSI WMI temperature getter" : null;
+        if (gpu is null)
+        {
+            var reading = NvidiaGpuTemperature.ReadAsync(token).GetAwaiter().GetResult();
+            gpu = reading.Celsius;
+            gpuSource = reading.Source;
+            warnings.Add("GPU temperature: " + reading.Source);
+        }
+        token.ThrowIfCancellationRequested();
         HardwareControlState? controls = null;
         if (_verifiedV2)
         {
@@ -81,7 +90,9 @@ public sealed class WindowsWmiSampler : ReadOnlyBridge
         warnings.Add("Fan RPM uses the vendor period formula; independent HWiNFO/LibreHardwareMonitor validation remains outstanding.");
         warnings.Add("Hardware changes require explicit Apply, fresh identity/state checks and journaled read-back. CPU curve edits are cooling-only; GPU/temperature tables are unchanged.");
         return new(_identity, DateTimeOffset.UtcNow, cpu, gpu, cpuFan, gpuFan, battery, ac,
-            cpu is not null || gpu is not null ? "MSI WMI telemetry (administrator)" : "Windows power telemetry; MSI sensors unavailable", warnings) { Controls = controls };
+            cpu is not null ? "MSI WMI telemetry · GPU: " + gpuSource
+                : gpu is not null ? "Windows power telemetry · GPU: " + gpuSource
+                : "Windows power telemetry; MSI sensors unavailable", warnings) { Controls = controls, GpuTemperatureSource = gpuSource };
     }
 
     private static List<Dictionary<string, object?>> Query(string scope, string query)

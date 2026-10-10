@@ -1,161 +1,155 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-07T21:37:51.874657+00:00",
+  "generatedAt": "2026-10-08T17:46:11.914406+03:00",
   "title": "Design System: QuietMSI",
   "extensions": {
-    "colorMeta": {
-      "background": { "role": "neutral", "displayName": "Cool workspace" },
-      "surface": { "role": "neutral", "displayName": "Plain surface" },
-      "ink": { "role": "neutral", "displayName": "Instrument ink" },
-      "muted": { "role": "neutral", "displayName": "Supporting slate" },
-      "header": { "role": "neutral", "displayName": "Charcoal identity" },
-      "header-ink": { "role": "neutral", "displayName": "Light header ink" },
-      "accent": { "role": "primary", "displayName": "Muted blue" }
-    },
-    "typographyMeta": {
-      "body": { "displayName": "Body", "purpose": "Labels, sources, reasons and inherited control text; native points." },
-      "heading": { "displayName": "Heading", "purpose": "Machine identity and section headings; native points." },
-      "title": { "displayName": "Title", "purpose": "Application name; native points." },
-      "reading": { "displayName": "Reading", "purpose": "CPU/GPU value or Unavailable; native points." }
-    },
-    "shadows": [],
-    "motion": [],
-    "breakpoints": [],
     "native": {
       "platform": "Windows desktop",
       "framework": ".NET 8 WinForms",
-      "designLanguage": "Windows system controls with app-authored tonal panels",
-      "sourceAuthority": ["src/QuietMSI/UI/Theme.cs", "src/QuietMSI/UI/MainForm.cs", "src/QuietMSI/UI/TrayContext.cs"],
-      "frontmatterPrimitiveAuthority": "DESIGN.md",
-      "units": {
-        "fonts": "Runtime System.Drawing.Font point units. Frontmatter converts to 96-DPI px for DESIGN.md CLI compatibility; this is not observed physical glyph size.",
-        "sourceFontPointSizes": { "body": 10, "heading": 12, "title": 19, "reading": 20 },
-        "layout": "WinForms baseline pixel values, DPI-scaled; frontmatter uses CSS padding order only for serialization",
-        "sourcePaddingOrder": "left, top, right, bottom",
-        "frontmatterPaddingOrder": "top, right, bottom, left"
+      "sourceAuthority": [
+        "src/QuietMSI/UI/Theme.cs",
+        "src/QuietMSI/UI/MainForm.cs",
+        "src/QuietMSI/UI/DashboardControls.cs",
+        "src/QuietMSI/UI/NativeAppearance.cs",
+        "src/QuietMSI/UI/ThemeSettings.cs",
+        "src/QuietMSI/UI/TrayContext.cs"
+      ],
+      "sourceFontPointSizes": {
+        "small": 9,
+        "body": 10,
+        "heading": 13,
+        "title": 20,
+        "reading": 27
       },
-      "highContrastMappings": {
-        "background": "SystemColors.Window",
-        "surface": "SystemColors.Window",
-        "header": "SystemColors.Window",
-        "ink": "SystemColors.WindowText",
-        "muted": "SystemColors.WindowText",
-        "header-ink": "SystemColors.WindowText",
-        "accent": "SystemColors.Highlight"
-      },
-      "highContrastLimit": "Colors assigned when controls are constructed; physical high-contrast rendering and dynamic mode switching are not attested.",
+      "units": "Native points; frontmatter uses calculated96-DPI px equivalents. Geometry baseline WinForms units.",
       "geometry": {
-        "initialClientSize": { "width": 560, "height": 740 },
-        "minimumOuterWindowSize": { "width": 440, "height": 480 },
-        "autoScaleMode": "Dpi",
-        "temperatureColumnPercentages": [50, 50],
-        "buttonMinimumHeight": 32,
-        "profileWidth": 280,
-        "chargeFieldWidth": 90,
-        "chargeDraftRange": [50, 100],
-        "chargeDraftValue": 80,
-        "diagnosticsHeight": 86
+        "initialClientSize": [
+          1160,
+          780
+        ],
+        "minimumOuterWindowSize": [
+          440,
+          480
+        ],
+        "headerHeightWide": 88,
+        "headerHeightCompact": 130,
+        "footerHeight": 114,
+        "contentStackBelow": 850,
+        "headerCompactBelow": 680,
+        "gap": 16,
+        "cardInset": 18,
+        "cardRadius": 14,
+        "buttonRadius": 8,
+        "ringSize": [
+          100,
+          100
+        ],
+        "ringStroke": 9
       },
-      "osOwnedTreatments": ["Button background, border, hover and focus", "Disabled field appearance", "Window chrome", "Scrollbars", "Selection and caret", "SystemIcons.Application"],
-      "htmlPreviewPolicy": "No HTML/CSS component replicas: this source uses native WinForms controls, and web previews would fabricate platform styling or behavior.",
-      "tonalRampPolicy": "Omitted: no authored tonal ramps exist; this is an exact built-system extraction, not palette expansion.",
-      "detectorPolicy": "No web detector or browser overlay: native C# UI is outside the detector's web scope. The context launcher misclassified the unsupported platform as web; PRODUCT.md was not changed.",
-      "authoredRadius": null,
-      "authoredFocusRing": null,
-      "authoredLineHeight": null,
-      "pollingSourceBehavior": {
-        "visibleIntervalMilliseconds": 5000,
-        "hiddenIntervalMilliseconds": 30000,
-        "overlappingCallsPrevented": true,
-        "staleSnapshotThresholdSeconds": 45,
-        "snapshotTimestampDisplay": "Local time HH:mm:ss",
-        "visibleBusyIndicator": false,
-        "hardwareWriteHandlers": false
-      }
+      "themeModes": [
+        "System",
+        "Light",
+        "Dark"
+      ],
+      "systemFallback": "Light",
+      "appearancePath": "%LOCALAPPDATA%/QuietMSI/appearance.json",
+      "viewportPolicy": "Scope preserve only to synchronous programmatic updates; never await or user navigation",
+      "hardwarePolicy": "Only explicit approved Apply, fresh current state and independent readback; no lifecycle writes",
+      "detectorPolicy": "HTML/CSS detector and web component replicas not applicable",
+      "capturePolicy": "Whole-form DrawToBitmap not authoritative for native arrow chrome; actual-screen synthetic dropdown crops adjudicate",
+      "exclusions": [
+        "Physical high contrast",
+        "Multi-monitor DPI",
+        "Screen reader",
+        "Localization",
+        "New CPU/memory budget certification"
+      ],
+      "supersededBy": "DESIGN.md and docs/ui-overhaul.md (0.4). This JSON and its companion review captures preserve the historical 0.3 review."
     },
-    "documentationValidation": {
-      "command": "npx -y -p @google/design.md designmd lint DESIGN.md",
-      "result": "0 errors; 1 missing-primary warning; 2 informational findings. Exact source role names are preserved: accent is the primary-role metadata, not a fabricated primary source constant. No authored rounded token exists, so the optional scale is intentionally omitted.",
-      "nativeUnitAdaptation": "The CLI rejected native pt units. Font sizes use explicitly calculated 96-DPI px equivalents in frontmatter; original point values remain exact in prose and native extensions. Multi-value spacing was normalized to scalar extracted dimensions while exact Padding tuples remain in DESIGN.md.",
-      "sidecarChecks": "JSON parsing, schemaVersion 2, five review sections, two evidence screenshots, no fabricated HTML/CSS replicas and exact Theme.cs source point sizes passed.",
-      "sourceChangeBoundary": "Git showed concurrent MainForm/TrayContext freshness updates after the initial read. This documenter did not change those files; the extracted Theme and layout tokens were unchanged. No app tests or hardware behavior were exercised."
-    },
-    "contrastEvidence": {
-      "method": "Calculated sRGB relative luminance from Theme.cs normal RGB tuples; not screenshot pixel sampling or full accessibility certification.",
-      "ratios": {
-        "ink/surface": 14.48,
-        "muted/surface": 6.61,
-        "muted/background": 6.0,
-        "header-ink/header": 13.68,
-        "accent/surface": 7.42
-      },
-      "exclusions": ["OS disabled control colors", "OS focus chrome", "Physical high-contrast rendering", "Assistive technology announcements"]
-    }
+    "shadows": [],
+    "motion": []
   },
   "components": [
-    { "name": "Identity header", "kind": "custom", "refersTo": "identity-header", "description": "Native vertical TableLayoutPanel: app, device, BIOS/EC, read-only sampling state and focused Refresh. No HTML replica." },
-    { "name": "Section", "kind": "card", "refersTo": "section", "description": "Flat rectangular native stack; surface tone, inset content and bottom separation, no custom radius or shadow." },
-    { "name": "Temperature reading", "kind": "custom", "refersTo": "temperature-reading", "description": "One of two equal native columns; explicit label above value or Unavailable, with source/status below the pair." },
-    { "name": "Refresh", "kind": "button", "refersTo": "refresh-button", "description": "Autosized native Button with mnemonic, OS visual styles, initial focus and minimum height; read-only sampling action." },
-    { "name": "Export diagnostics", "kind": "button", "refersTo": "export-button", "description": "Native action with accent text and local SaveFileDialog; identity-sharing caution after success." },
-    { "name": "Provider diagnostics", "kind": "input", "refersTo": "diagnostics", "description": "Native read-only multiline TextBox with vertical scrolling. OS caret, selection, border and focus behavior are not recreated." },
-    { "name": "Locked hardware fields", "kind": "input", "description": "Disabled native selector, checkbox, numeric draft and read-only curve field with disabled Apply actions and explicit policy reasons. No current-value or write-success claim." },
-    { "name": "Tray navigation", "kind": "nav", "description": "NotifyIcon and native context menu: Open QuietMSI, Refresh telemetry, Exit. Close/minimize hides the window; Exit disposes it." }
+    {
+      "name": "Dashboard card",
+      "kind": "card",
+      "description": "Rounded bordered themed native panel."
+    },
+    {
+      "name": "Apply button",
+      "kind": "button",
+      "description": "Native action with authored theme painting and visible focus."
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "description": "Overview/Cooling/Diagnostics, selected underline; no hardware effect."
+    },
+    {
+      "name": "Native editors",
+      "kind": "input",
+      "description": "Staged actual profiles/modes/boost and bounded six percentages."
+    },
+    {
+      "name": "Temperature ring",
+      "kind": "custom",
+      "description": "Actual sampled value/Unavailable in contained100-unit ring."
+    },
+    {
+      "name": "CPU curve",
+      "kind": "custom",
+      "description": "Read-only true temperature spacing plus exact companion table."
+    },
+    {
+      "name": "Diagnostics",
+      "kind": "input",
+      "description": "Read-only native provider text and local export."
+    }
   ],
   "narrative": {
-    "northStar": "The Quiet Instrument Panel",
-    "overview": "This is an extraction of the built native .NET 8 WinForms visual system, not a proposed redesign. Its charcoal identity header, light neutral sections, and ordered telemetry rows translate the approved music-library detail-view direction into a practical Windows utility. Brand expression resides in hierarchy and restrained color, not a music costume or custom control chrome.\n\nThe system uses code-led layout, Windows UI fonts, standard controls and system iconography. Its current release is read-only: apparent hardware settings are disabled capability disclosures, not working configuration features. The document records actual source values; it does not unlock controls, promise calibrated telemetry, or establish runtime accessibility compliance.",
+    "northStar": "The Quiet Laptop Dashboard",
+    "overview": "The built 0.3 native .NET 8 WinForms interface follows the user's dashboard concept: pale cool surfaces, navy/slate text, rounded bordered cards and restrained teal interaction/data accents. Dark mode uses charcoal surfaces, soft white text and brighter teal. Native inputs, Windows chrome and tray conventions remain. No WebView, external fonts or UI packages were added.\n\nThis replaces the obsolete narrow, read-only, blue-accent system. Source authority: `UI/Theme.cs`, `MainForm.cs`, `DashboardControls.cs`, `NativeAppearance.cs`, `ThemeSettings.cs`, `TrayContext.cs`. Frontmatter records source RGB tuples; typography px values are calculated 96-DPI equivalents of native point sizes, not physical glyph measurements. Geometry is baseline WinForms units, not CSS implementation.",
     "keyCharacteristics": [
-      "Clear device and sampling context above a scrollable single-column workspace.",
-      "Two equally weighted temperature readings, followed by ordered source/status rows.",
-      "Flat tonal separation and one muted blue action accent.",
-      "Native buttons, fields, window chrome and tray behavior.",
-      "Explicit unavailable, stale and locked states instead of fabricated values."
+      "Overview, Cooling and Diagnostics navigation; System/Light/Dark selection.",
+      "Monitoring/current curve on the left; performance/cooling actions on the right in the wide layout.",
+      "Editable drafts, explicit Apply, independent readback and honest unavailable/stale states.",
+      "Compact wrapping/manual scroll; refresh preserves the viewport while keyboard navigation reveals off-screen controls."
     ],
     "rules": [
-      { "name": "The System Contrast Rule", "body": "High contrast replaces authored colors with Windows system colors: Background/Surface/Header → SystemColors.Window; Ink/Muted/HeaderInk → SystemColors.WindowText; Accent → SystemColors.Highlight. No fixed high-contrast RGB values are specified. Control construction assigns colors from these getters; runtime mode-switch propagation is not established.", "section": "colors" },
-      { "name": "The Instrument Type Rule", "body": "Use the installed Windows UI face and established hierarchy. Do not introduce an external display face, oversized marketing typography, arbitrary font smoothing, or decorative motion to this native Operate surface. Web craft prescriptions are adapted to the explicitly approved native platform.", "section": "typography" }
+      {
+        "name": "System Contrast",
+        "body": "High contrast overrides palettes: background/surface/selected → Window; ink/muted/border/warning → WindowText; accent → Highlight; accent-ink → HighlightText. Preference changes reapply colors. Physical high-contrast/disabled-state compliance is not certified."
+      },
+      {
+        "name": "Complete Reading",
+        "body": "Measure text at available width, not single-line height. Retain CPU °C, fan target '(not RPM)' and source/calibration qualifications. Sensor cards grow with content. Measure the brand before placing identity beside it. Dynamic label screen-reader announcements remain unverified."
+      },
+      {
+        "name": "Stable Refresh",
+        "body": "Scroll suppression applies only within synchronous programmatic state/render/layout scopes, never across a sample await or deliberate keyboard navigation. Fresh safe drafts stay enabled during reads; Apply/Restore are blocked. Capability loss/staleness still fail closed. Tab/Shift+Tab reveal lower actions."
+      }
     ],
     "dos": [
-      "Do preserve Segoe UI and the exact extracted Theme roles.",
-      "Do retain visible labels, units, sources, capability reasons and scroll-managed sections.",
-      "Do distinguish unavailable readings, stale retained readings and proposed setting values.",
-      "Do leave native control chrome and keyboard affordances intact.",
-      "Do describe this build as a read-only telemetry/capability utility."
+      "preserve semantic palettes and full units/source notes in both themes.",
+      "distinguish staged choice, observed hardware state, backend result and independent readback.",
+      "preserve keyboard/manual scrolling while suppressing only programmatic refresh reveal.",
+      "label fixture captures and retain provenance."
     ],
     "donts": [
-      "Don't invent readings, current hardware settings, calibrated RPM or write success.",
-      "Don't unlock hardware controls without the separately validated safety contract.",
-      "Don't advertise the unavailable-data smoke fixture as live device telemetry.",
-      "Don't claim full MSI Center replacement, verified physical high contrast or tested multi-monitor behavior.",
-      "Don't add vendor fonts/assets, raster decoration, web UI dependencies or decorative animation.",
-      "Don't turn OS-derived button styling into invented authored tokens."
+      "invent calibrated RPM, unsupported controls or a hardware-verified badge.",
+      "add lifecycle writes or weaken existing curve bounds.",
+      "claim physical accessibility or resource targets from fixture tests.",
+      "reuse the obsolete read-only finish verdict as this release's approval."
     ]
   },
   "review": {
-    "method": "Independent native finish review of supplied images through vision_analyze, with read-only source and existing verification-document inspection. No nested subagent tool exposed. Not a web detector critique or fresh runtime QA.",
-    "scope": "Presentation and built visual-system documentation only; writes limited to DESIGN.md and .impeccable/design.json. No UI code edits, tests, app launch, elevation, hardware calls, recapture, build or packaging.",
-    "screenshots": [
-      { "path": "tests/QuietMSI.UITests/smoke.png", "role": "Unavailable-data ReadOnlyBridge fixture", "limits": "Not live device telemetry and not a marketing demonstration of live sensor capability." },
-      { "path": "C:/Users/WindowsHostage/AppData/Local/hermes/cache/scratch/quietmsi-live.png", "role": "Validated actual unelevated-device full-window PrintWindow capture", "windowPixels": [600, 700], "observedState": "GF63 Thin 11UCX, BIOS E16R6IMS.112, EC unidentified, read-only, battery 100%, AC, protected temperature/fan sensors unavailable.", "limits": "Text fits at the true capture, provider wraps and scrollbar manages lower sections. Not evidence of elevated sensor readings, writable features or assistive-technology behavior." }
-    ],
-    "sections": {
-      "composition": "Ship-quality restrained utility composition. Charcoal device context, equal temperature columns and ordered source rows produce a clear reading path without decorative assets. Large Unavailable labels and a generous header favor legibility over first-viewport density; this is a nonblocking density choice. No evidenced collision or text clipping. Lower sections crossing the viewport are scroll-managed, not broken controls.",
-      "craftAccessibility": "Source specifies Segoe UI 10/12/19/20 point hierarchy and consistent padding/margins. Calculated normal text contrast clears the floor for the enumerated pairs. Native controls, mnemonics, initial Refresh focus and AccessibleName assignments provide a baseline. Static names on changing labels, disabled control rendering, screen-reader announcements, physical high contrast, dynamic high-contrast switching and monitor transitions are not validated. No web-font, custom-radius or 65–75-character prose requirement is imposed on compact native data rows.",
-      "productTruthStates": "Acceptable honest read-only scope. Unavailable is never replaced with invented zeros; actual Windows power information remains independent of unavailable protected sensors. All hardware controls stay disabled and lack write handlers; proposed charge 80 is labeled not current hardware value. Live telemetry is supported by 5-second visible/30-second hidden automatic polling in TrayContext, not proof that every sensor is available. Last sample is snapshot local time, including partial snapshots, not necessarily last successful protected sensor read. RPM reported retains source/calibration caveats; target percent is not RPM.",
-      "behaviorEvidenceLimits": "Existing docs report native UI checks for lock states, polling, stale/error/suspension, export/readback, tray lifecycle, disposal and compact scaling. Review inspected source and supplied captures only; did not rerun them. Programmatic 150% scaling preserves locks in test source but does not itself prove every long label fits at physical 150% DPI. Full lower settings and stale/error/busy states are not visible in the supplied captures. Close-to-tray and Exit are source-supported, not newly manually exercised. Elevated independent read results in docs do not turn the unelevated screenshot into live sensor evidence.",
-      "dispositionFindings": "SHIP for the honestly labeled read-only telemetry/capability release, conditional on separate engineering/security and packaging gates. No material native visual defect established that blocks this scope. Do not ship as a complete writable MSI Center replacement: unresolved write-safety evidence is a feature-release blocker. No rebuild, UI redesign or replacement capture is required by these two presentation states. Recapture lower settings, stale/error and accessibility/DPI variants only before claiming their visual/runtime validation. Nonblocking follow-ups: clearer sampling timestamp semantics; visible in-flight refresh status; clearer unknown identity wording; earlier close-to-tray guidance and sensor-source explanation; verify current screen-reader announcements. Do not prescribe elevation or claim it will unlock controls."
-    },
     "disposition": "ship",
-    "materialVisualBlockers": [],
-    "featureReleaseBlockers": ["Incomplete independently validated safety contracts prevent shipping writable hardware features or claiming complete MSI Center replacement."],
-    "findings": [
-      { "id": "F1", "priority": "P2", "title": "Snapshot time wording lacks scope", "evidence": "MainForm.cs:244–252 formats Last sample as local HH:mm:ss even for partial provider snapshots.", "recommendation": "Later clarify Last checked at or equivalent local-time wording without implying a successful protected-sensor sample.", "blocksReadOnlyShipment": false },
-      { "id": "F2", "priority": "P2", "title": "No visible in-flight refresh feedback", "evidence": "MainForm.cs:231–267 guards overlapping polls but does not update a busy state.", "recommendation": "Later show sampling-in-progress feedback or disable Refresh only while the read is in flight; retain fail-closed controls.", "blocksReadOnlyShipment": false },
-      { "id": "F3", "priority": "P3", "title": "Unknown identity and explanatory copy are less clear than the numeric hierarchy", "evidence": "Fixture shows Unknown Unknown; live source explanation appears after prominent Unavailable values. Close-to-tray explanation is in the lower diagnostics section.", "recommendation": "Later use labeled unknown identity, concise established sensor-status explanation and earlier tray guidance; do not invent a provider failure cause.", "blocksReadOnlyShipment": false },
-      { "id": "F4", "priority": "verification-gap", "title": "Assistive technology and physical display-state coverage are not established", "evidence": "TextLabel constructs static AccessibleName values; existing docs explicitly exclude screen-reader, physical high contrast and real monitor transitions. Supplied captures show initial normal-theme viewport only.", "recommendation": "Verify dynamic announcements, keyboard reachability of lower sections, disabled control contrast, physical high contrast and multi-monitor DPI before making those compliance claims.", "blocksReadOnlyShipment": false }
-    ],
-    "questionsSkipped": "Autonomous review and documentation delegated; no intermediate approval requested. No scope change or UI fixes performed.",
-    "toolingIssue": "Impeccable context recognizes no Windows WinForms platform and mislabeled it web. Native source and supplied captures are authority; no PRODUCT.md change, web detector or invented platform was used."
+    "scope": "Independent bounded six-fix verdict: all six resolved. See docs/dashboard-finish-review.md. Not hardware, physical accessibility or resource certification.",
+    "evidence": [
+      "docs/dashboard-verification.md",
+      "tests/QuietMSI.UITests/screenshots/parent-final-verification.json",
+      ".impeccable/review/synthetic-provenance.json",
+      ".impeccable/review/native-dropdown-provenance.json"
+    ]
   }
 }

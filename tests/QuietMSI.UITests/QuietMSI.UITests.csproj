@@ -8,6 +8,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../src/QuietMSI/Assets/QuietMSI.ico" LogicalName="QuietMSI.AppIcon.ico" />
     <ProjectReference Include="../../src/QuietMSI.Core/QuietMSI.Core.csproj" />
     <!-- Compile the exact UI sources independently of Program and transport. -->
     <Compile Include="../../src/QuietMSI/UI/**/*.cs" Link="UI/%(RecursiveDir)%(Filename)%(Extension)" />
