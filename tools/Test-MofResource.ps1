@@ -26,4 +26,3 @@ try {
     if ($hash -ne (Get-FileHash -LiteralPath $ExpectedBinary).Hash) { throw 'Resource differs from the independently compiled MOF.' }
     [PSCustomObject]@{ Success=$true; ResourceType='MOFDATA'; Name='MofResource'; Size=$size; Sha256=$hash; LoadMode='LOAD_LIBRARY_AS_DATAFILE; no executable code run' } | ConvertTo-Json | Set-Content -LiteralPath $Result
 } finally { [FirmwareResourceCheck]::FreeLibrary($module) | Out-Null }
-

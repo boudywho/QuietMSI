@@ -38,4 +38,3 @@ internal static class MsiCpuCurve
         finally{foreach(var instance in instances)instance.Dispose();}
     }
 }
-

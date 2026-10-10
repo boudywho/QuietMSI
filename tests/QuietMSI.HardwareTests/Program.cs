@@ -47,6 +47,16 @@ if (args.Contains("--gpu-valid")) { Console.WriteLine("44"); return 0; }
 if (args.Contains("--gpu-invalid")) { Console.WriteLine("N/A"); return 0; }
 if (args.Contains("--gpu-error")) { Console.WriteLine("44"); return 1; }
 
+foreach (byte unvalidatedMode in new byte[] { 0x1d, 0x9d })
+foreach (byte approvedMode in new byte[] { 0x0d, 0x8d })
+{
+    var rejected = false;
+    try { new MsiControlTransport().Write(new(0xd4, unvalidatedMode, approvedMode)); }
+    catch (InvalidOperationException e) when (e.Message == "Register transformation is not allowlisted.") { rejected = true; }
+    if (!rejected) throw new Exception("Unvalidated fan-mode bit reached firmware transport");
+}
+Console.WriteLine("PASS firmware transport refuses unvalidated fan-mode bit before WMI access");
+
 System.Diagnostics.ProcessStartInfo Worker(string flag)
 {
     var info = new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!);

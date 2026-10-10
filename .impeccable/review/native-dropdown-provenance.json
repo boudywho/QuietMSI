@@ -1,0 +1,33 @@
+{
+  "Origin": "Actual visible desktop Graphics.CopyFromScreen; PerMonitorV2; native COMBOBOXINFO arrow/list rectangles",
+  "Fixture": "SyntheticControlBridge; no hardware transport or requests; null settings path",
+  "Dpi": 120,
+  "CapturedAt": "2026-10-08T00:39:50.3442392+00:00",
+  "AssemblySha256": "3d2cb48f373a5e95ddcc1cf196a572d2c0ec3c7dbb412421122a23faa48718b0",
+  "Images": [
+    {
+      "File": "native-dark-Hardware_FanMode-closed.png",
+      "Sha256": "7c5784b7d5393795d10c8128f2b045fd49e84c99258020130285426a86777c45"
+    },
+    {
+      "File": "native-dark-Hardware_FanMode-open.png",
+      "Sha256": "d843486f884119b9b12fa909e42868754fa44b28ca8f8d8dc4fd65c38396f061"
+    },
+    {
+      "File": "native-dark-Hardware_Profile-closed.png",
+      "Sha256": "f16cbbef7b8956b81033c772e0a75cbddb0112f3082e6bf1fc4feb9a639b763f"
+    },
+    {
+      "File": "native-dark-Hardware_Profile-open.png",
+      "Sha256": "4a3c69ba0cc440e28758b8e5de106fbe097bdbeaa0aee0151058bec49f029bc6"
+    },
+    {
+      "File": "native-dark-ThemeMode-closed.png",
+      "Sha256": "647ca0d66470d8db2017c8ea24f496f2338144cd2c60ec1b521b2a238b8b4d6a"
+    },
+    {
+      "File": "native-dark-ThemeMode-open.png",
+      "Sha256": "d395cb82311c42ff7ec8dd9b2cdc25497382620f1c2d0b342b174cb0a2a6744c"
+    }
+  ]
+}

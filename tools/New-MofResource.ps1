@@ -26,4 +26,3 @@ ResourceHeader $data.Length 'MOFDATA' 'MOFRESOURCE'
 $writer.Write($data); Align
 [IO.File]::WriteAllBytes($Output, $stream.ToArray())
 $writer.Dispose(); $stream.Dispose()
-

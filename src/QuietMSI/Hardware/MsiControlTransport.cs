@@ -24,7 +24,7 @@ internal sealed class MsiControlTransport : IControlTransport
         {
             0x98 => (change.Before & 0x7f) == (change.After & 0x7f),
             0xd2 => (change.Before is 0xc0 or 0xc1 or 0xc2 or 0xc4) && (change.After is 0xc0 or 0xc1 or 0xc2 or 0xc4),
-            0xd4 => (change.Before & 0x6f) == 0x0d && (change.After is 0x0d or 0x8d),
+            0xd4 => (change.Before is 0x0d or 0x8d) && (change.After is 0x0d or 0x8d),
             _ => false
         };
         if (!valid) throw new InvalidOperationException("Register transformation is not allowlisted.");
@@ -51,4 +51,3 @@ internal sealed class MsiControlTransport : IControlTransport
         finally { foreach (var row in list) row.Dispose(); }
     }
 }
-

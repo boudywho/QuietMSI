@@ -1,0 +1,42 @@
+{
+  "Origin": "Native WinForms MainForm.DrawToBitmap; dropdown arrows judged from companion actual-screen captures, not WM_PRINT",
+  "Fixture": "SyntheticControlBridge; no live hardware transport; no writes",
+  "ThemeSettings": "Nonpersisting fixture (null path)",
+  "Dpi": 120,
+  "CapturedAt": "2026-10-08T00:39:47.8064708+00:00",
+  "AssemblySha256": "3d2cb48f373a5e95ddcc1cf196a572d2c0ec3c7dbb412421122a23faa48718b0",
+  "Images": [
+    {
+      "File": "synthetic-dark-compact.png",
+      "Sha256": "9cf8b09480d24b390f508e4e38f6743d90bda14ab3a42c847387eb67e31b8562"
+    },
+    {
+      "File": "synthetic-dark-cooling.png",
+      "Sha256": "52bac18e6972a7ed84881ef8330d93113493795f6d5bf67025073a62e3c9cd1d"
+    },
+    {
+      "File": "synthetic-dark-diagnostics.png",
+      "Sha256": "31e8547fdc5e6564ff5069fa6e1a25b0c1550df9c8703cb13c4c19e29d5a9bcd"
+    },
+    {
+      "File": "synthetic-dark-overview.png",
+      "Sha256": "f6574357d16a43e45700450e89be8dfbdeacf419ec387b27747668394aaadddd"
+    },
+    {
+      "File": "synthetic-light-compact.png",
+      "Sha256": "58269f0c2bc838452da1d22a839e2392b02f4cada943e21644ce54f07a6e0adb"
+    },
+    {
+      "File": "synthetic-light-cooling.png",
+      "Sha256": "96035e54c088d05c88d72b24f342ca2f936392cead2f48d000b84c654ee39e55"
+    },
+    {
+      "File": "synthetic-light-diagnostics.png",
+      "Sha256": "39831663f0987c875e6c5c8a6252fa24bde5df26c39e012e6bc9d0666b5ff642"
+    },
+    {
+      "File": "synthetic-light-overview.png",
+      "Sha256": "a74eecc35a05f514dced4cad7da272bc579b1bc83b19ec08effb2e141d34bc22"
+    }
+  ]
+}

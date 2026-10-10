@@ -33,7 +33,3 @@ class QuietMSI_ACPI
     [WmiMethodId(29), Implemented, read, write]
     boolean Get_WMI([out, ID(0), EmbeddedInstance("QuietMSI_Packet32")] QuietMSI_Packet32 Data);
 };
-
-
-
-
