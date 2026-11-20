@@ -352,6 +352,13 @@ internal static partial class Program
         Check(fan.AccessibilityObject.Name == fan.Text, "CompactTelemetryFit: assistive technology must receive the live fan reading.");
         Check(fan.Text.Contains("Target 45% (not RPM)") && fan.AccessibleDescription!.Contains("not independently calibrated"), "CompactTelemetryFit: no shortening away measurement truth.");
         Check(!labels.SelectMany((a, i) => labels.Skip(i + 1).Select(b => a.Bounds.IntersectsWith(b.Bounds))).Any(overlap => overlap), "CompactTelemetryFit: wrapped telemetry cannot overlap neighboring rows.");
+        var fan2 = Descendants(form).OfType<Label>().Single(c => c.Text.StartsWith("Fan 2 ·"));
+        var fan2Bounds = fan2.Bounds;
+        bridge.HeldRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HeldRead.SetResult(bridge.Snapshot with { GpuFan = FanReading.FromTarget(149.9, "Synthetic target only") });
+        Pump(form.PollAsync());
+        var fan2TextHeight = TextRenderer.MeasureText(fan2.Text, fan2.Font, new Size(fan2.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
+        Check(fan2.Bounds == fan2Bounds && fan2.Height >= fan2TextHeight, "CompactTelemetryFit: a longer target-only fan reading must fit without moving or resizing the row.");
         Check(bridge.Requests.Count == 0, "CompactTelemetryFit: layout must not write.");
         Console.WriteLine("PASS CompactTelemetryFit (width-constrained CPU units, fan target/calibration source and battery; growing card; no overlap)");
     }

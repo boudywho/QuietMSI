@@ -146,6 +146,14 @@ public sealed partial class MainForm : Form
             var wide = textWidth >= D(620);
             var cell = wide ? textWidth / 4 : half;
             var side = Math.Max(0, cell - D(8));
+            // Reserve room for wrapped readings on resize, independently of the current sample.
+            int ReadingHeight(string example, int width) => TextRenderer.MeasureText(example, _theme.Body,
+                new Size(Math.Max(1, width), int.MaxValue), TextFormatFlags.WordBreak).Height + D(4);
+            var readingWidth = wide ? side : textWidth;
+            var fanHeight = Math.Max(D(wide ? 54 : 36), Math.Max(
+                ReadingHeight("Fan 2 · 30000 RPM reported · Target 149.9% (not RPM)", readingWidth),
+                ReadingHeight("Fan 2 · Measured RPM unavailable · Target 149.9% (not RPM)", readingWidth)));
+            var powerHeight = Math.Max(D(40), ReadingHeight("Battery · Unavailable\nSource · Unavailable", readingWidth));
             telemetryTitle.SetBounds(D(18), D(12), textWidth, D(26));
             cpuTitle.SetBounds(D(18), D(43), side, D(18)); gpuTitle.SetBounds(D(18) + cell, D(43), side, D(18));
             _cpu.SetBounds(D(18), D(61), side, D(36)); _gpu.SetBounds(D(18) + cell, D(61), side, D(36));
@@ -154,17 +162,14 @@ public sealed partial class MainForm : Form
             {
                 fanTitle.SetBounds(D(18) + 2 * cell, D(43), side, D(18));
                 powerTitle.SetBounds(D(18) + 3 * cell, D(43), side, D(18));
-                _cpuFan.SetBounds(fanTitle.Left, D(61), side, D(54));
-                _gpuFan.SetBounds(fanTitle.Left, D(115), side, D(54));
-                _battery.SetBounds(powerTitle.Left, D(61), side, D(108));
-                return D(174);
+                _cpuFan.SetBounds(fanTitle.Left, D(61), side, fanHeight);
+                _gpuFan.SetBounds(fanTitle.Left, _cpuFan.Bottom, side, fanHeight);
+                _battery.SetBounds(powerTitle.Left, D(61), side, powerHeight);
+                return Math.Max(_gpuFan.Bottom, Math.Max(_battery.Bottom, _cpu.Bottom)) + D(11);
             }
-            _cpuFan.SetBounds(D(18), D(101), textWidth, D(36));
-            _gpuFan.SetBounds(D(18), D(137), textWidth, D(36));
-            // Measure against a fixed worst case on resize, not against incoming samples.
-            var powerHeight = TextRenderer.MeasureText("Battery · Unavailable\nSource · Unavailable", _battery.Font,
-                new Size(Math.Max(1, textWidth), int.MaxValue), TextFormatFlags.WordBreak).Height + D(4);
-            _battery.SetBounds(D(18), D(173), textWidth, Math.Max(D(40), powerHeight));
+            _cpuFan.SetBounds(D(18), D(101), textWidth, fanHeight);
+            _gpuFan.SetBounds(D(18), _cpuFan.Bottom, textWidth, fanHeight);
+            _battery.SetBounds(D(18), _gpuFan.Bottom, textWidth, powerHeight);
             return _battery.Bottom + D(11);
         };
 
