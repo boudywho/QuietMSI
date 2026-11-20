@@ -15,6 +15,7 @@ On MSI GF63 Thin 11UCX, BIOS E16R6IMS.112, EC16R6EMS1.106, WMI2.8:
 - All reads returned EC identity, CPU/GPU temperatures, fan RPM, battery/AC and complete performance, fan mode, boost and CPU-curve state.
 - The services were restored to their original running state in a `finally` block. No hardware settings were changed.
 - Raw local evidence is `artifacts/standalone/independence-verification.json` and the three `independent-read-*.json` files. These contain machine identity and are not included in the public package.
+- The one-off service-isolation script was tied to that local checkout and the 0.5.0 executable. It is retained in Git history, not part of current build or acceptance tooling. The app's on-demand `--diagnostics <path>` read remains available.
 
 ## Actual MSI removal
 
