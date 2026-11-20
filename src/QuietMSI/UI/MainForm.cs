@@ -161,8 +161,11 @@ public sealed partial class MainForm : Form
             }
             _cpuFan.SetBounds(D(18), D(101), textWidth, D(36));
             _gpuFan.SetBounds(D(18), D(137), textWidth, D(36));
-            _battery.SetBounds(D(18), D(173), textWidth, D(36));
-            return D(220);
+            // Measure against a fixed worst case on resize, not against incoming samples.
+            var powerHeight = TextRenderer.MeasureText("Battery · Unavailable\nSource · Unavailable", _battery.Font,
+                new Size(Math.Max(1, textWidth), int.MaxValue), TextFormatFlags.WordBreak).Height + D(4);
+            _battery.SetBounds(D(18), D(173), textWidth, Math.Max(D(40), powerHeight));
+            return _battery.Bottom + D(11);
         };
 
         var performance = Stack(_theme.Surface, Padding.Empty);
@@ -171,7 +174,7 @@ public sealed partial class MainForm : Form
         performance.Controls.Add(_current);
 
         var profiles = new ProfileSelector(_theme) { AccessibleName = "Performance profile", Dock = DockStyle.Top, Margin = new Padding(0, 8, 0, 4) };
-        profiles.SelectedIndexChanged += (_, _) => { if (!_renderingState) { _profileDirty = true; _result.Text = profiles.SelectedItem + " selected · Apply profile to confirm."; } };
+        profiles.SelectedIndexChanged += (_, _) => { if (!_renderingState) { _profileDirty = true; SetOperationStatus(profiles.SelectedItem + " selected · Apply profile to confirm."); } };
         Hardware(performance, ControlKind.PerformanceProfile, profiles, "Profile");
         var profileRow = ActionRow(performance);
         var applyProfile = NativeButton("Apply profile"); ((DashboardButton)applyProfile).Primary = true;
@@ -189,7 +192,7 @@ public sealed partial class MainForm : Form
         fanMode.AccessibleDescription = "Not a factory reset. Auto follows firmware; Advanced uses the existing curve. Applying a mode turns Cooler Boost off.";
         _tips.SetToolTip(fanMode, fanMode.AccessibleDescription);
         fanMode.Items.AddRange(new object[] { "Auto", "Advanced" }); fanMode.SelectedIndex = -1;
-        fanMode.SelectedIndexChanged += (_, _) => { if (!_renderingState) { _fanModeDirty = true; _result.Text = $"{fanMode.SelectedItem} selected · Apply mode to confirm."; } };
+        fanMode.SelectedIndexChanged += (_, _) => { if (!_renderingState) { _fanModeDirty = true; SetOperationStatus($"{fanMode.SelectedItem} selected · Apply mode to confirm."); } };
         Hardware(modeRow, ControlKind.AutomaticFans, fanMode, "FanMode");
         var automatic = NativeButton("Apply mode");
         automatic.Click += (_, _) => { if (fanMode.SelectedItem is string value) BeginApply(new(ControlKind.AutomaticFans, value)); };
@@ -199,7 +202,7 @@ public sealed partial class MainForm : Form
         cooling.Controls.Add(_currentBoost);
         var boostRow = ActionRow(cooling);
         var boost = new CheckBox { Text = "Cooler Boost", AutoSize = true, AccessibleName = "Proposed CoolerBoost", Margin = new Padding(0, 10, 16, 0) };
-        boost.CheckedChanged += (_, _) => { if (!_renderingState) { _boostDirty = true; _result.Text = $"Boost {(boost.Checked ? "on" : "off")} selected · Apply boost to confirm."; } };
+        boost.CheckedChanged += (_, _) => { if (!_renderingState) { _boostDirty = true; SetOperationStatus($"Boost {(boost.Checked ? "on" : "off")} selected · Apply boost to confirm."); } };
         Hardware(boostRow, ControlKind.CoolerBoost, boost, "Boost");
         var applyBoost = NativeButton("Apply boost");
         applyBoost.Click += (_, _) => BeginApply(new(ControlKind.CoolerBoost, boost.Checked ? "true" : "false"));
@@ -262,7 +265,7 @@ public sealed partial class MainForm : Form
         {
             if (_themeSelector.SelectedItem is not string selection) return;
             ApplyTheme();
-            if (!_settings.Write(selection)) _result.Text = "Appearance changed; preference could not be saved.";
+            if (!_settings.Write(selection)) SetOperationStatus("Appearance changed; preference could not be saved.");
         };
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         Shown += (_, _) => { PositionHeader(); PositionFooter(); ApplyTheme(true); LayoutDashboard(); _navigation[_page].Focus(); };

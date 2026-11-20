@@ -38,8 +38,7 @@ public sealed partial class MainForm
             var capability = CapabilityFor(kind);
             var valid = ValidState(kind);
             var available = capability.Kind == kind && capability.CanWrite && valid && !IsStale && !_suspended;
-            // A safe background read need not disable a fresh focused draft input. Actions remain serialized.
-            available &= kind is ControlKind.PerformanceProfile or ControlKind.CoolerBoost or ControlKind.AutomaticFans or ControlKind.FanCurve;
+            // Leave fresh inputs enabled during ordinary background reads, but not once Apply is queued.
             var enabled = available && !HasPendingApply && !_shutdownRequested;
             foreach (var control in _hardware[kind]) if (control.Enabled != enabled) control.Enabled = enabled;
             var reason = kind == ControlKind.FanCurve && !valid
@@ -127,7 +126,7 @@ public sealed partial class MainForm
             if (_polling)
             {
                 _applyQueued = true;
-                _result.Text = "Waiting for the current sample before applying…";
+                SetOperationStatus("Waiting for the current sample before applying…");
                 RefreshCapabilities();
                 await _sampleTask;
             }
@@ -136,23 +135,23 @@ public sealed partial class MainForm
             var cap = CapabilityFor(request.Kind);
             if (_shutdownRequested || _preparing || _suspended || generation != _sampleGeneration || IsStale || !ValidState(request.Kind) || !cap.CanWrite || cap.Kind != request.Kind)
             {
-                _result.Text = "Not applied · No command sent. Refresh hardware state before applying again.";
+                SetOperationStatus("Not applied · No command sent. Refresh hardware state before applying again.");
                 return;
             }
             if (request.Kind == ControlKind.FanCurve && !ValidCpuCurveRequest(request))
             {
-                _result.Text = "Curve not applied · Use six nondecreasing percentages within the captured-original bounds.";
+                SetOperationStatus("Curve not applied · Use six nondecreasing percentages within the captured-original bounds.");
                 return;
             }
             IsApplying = true;
             _applyQueued = false;
             _applyError = null;
             RefreshCapabilities();
-            _result.Text = "Applying · Waiting for hardware verification…";
+            SetOperationStatus("Applying · Waiting for hardware verification…");
             var transaction = _bridge.ApplyAsync(request, token);
             using var notice = CancellationTokenSource.CreateLinkedTokenSource(token);
             if (await Task.WhenAny(transaction, Task.Delay(TimeSpan.FromSeconds(12), notice.Token)) != transaction && !token.IsCancellationRequested)
-                _result.Text = "Hardware has not responded yet · Result unconfirmed. No retry will be sent.";
+                SetOperationStatus("Hardware has not responded yet · Result unconfirmed. No retry will be sent.");
             notice.Cancel();
             var result = await transaction;
             if (IsDisposed || token.IsCancellationRequested) return;
@@ -163,12 +162,12 @@ public sealed partial class MainForm
             if (!result.Applied)
             {
                 LastError = _applyError = result.Message;
-                _result.Text = "Apply failed · " + result.Message;
+                SetOperationStatus("Apply failed · " + result.Message);
             }
             else if (!refreshed || IsStale || !ReadbackMatches(request))
             {
                 LastError = _applyError = !refreshed || IsStale ? "UI readback unavailable; Refresh required." : "UI readback mismatch; requested value was not observed.";
-                _result.Text = _applyError;
+                SetOperationStatus(_applyError);
             }
             else
             {
@@ -178,7 +177,7 @@ public sealed partial class MainForm
                 if (request.Kind == ControlKind.AutomaticFans) _fanModeDirty = false;
                 if (request.Kind == ControlKind.FanCurve) _curveDirty = false;
                 RenderDrafts(LastSnapshot!.Controls);
-                _result.Text = "Backend verified · " + result.Message;
+                SetOperationStatus("Backend verified · " + result.Message);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -187,7 +186,7 @@ public sealed partial class MainForm
             if (!IsDisposed && !token.IsCancellationRequested)
             {
                 LastError = _applyError = exception.Message;
-                _result.Text = "Apply failed · " + exception.Message;
+                SetOperationStatus("Apply failed · " + exception.Message);
                 MarkStale("Transaction state unknown; Refresh required");
                 await Task.Run(() => RuntimeLog.Write("Apply", exception));
             }
@@ -212,7 +211,9 @@ public sealed partial class MainForm
 
     public async Task ExportDiagnosticsAsync(string path)
     {
+        ObjectDisposedException.ThrowIf(_resourcesDisposed || IsDisposed, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var token = _shutdown.Token;
         UpdateFreshness(DateTimeOffset.UtcNow);
         var capabilities = Enum.GetValues<ControlKind>().Select(kind =>
         {
@@ -229,7 +230,7 @@ public sealed partial class MainForm
             Capabilities = capabilities
         };
         var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(path, json, _shutdown.Token);
+        await File.WriteAllTextAsync(path, json, token);
     }
 
     public Task PollAsync() => StartPoll(false);
@@ -299,7 +300,7 @@ public sealed partial class MainForm
                 var log = LastError != exception.Message;
                 LastError = exception.Message;
                 MarkStale("Sample failed: " + exception.Message);
-                if (_applyError is null && !HasPendingApply) _result.Text = "Refresh failed · " + exception.Message;
+                if (_applyError is null && !HasPendingApply) SetOperationStatus("Refresh failed · " + exception.Message);
                 if (log) await Task.Run(() => RuntimeLog.Write("Sample", exception));
             }
         }
@@ -368,6 +369,11 @@ public sealed partial class MainForm
     }
 
     internal Task ActiveSample => _sampleTask;
+
+    private void SetOperationStatus(string status)
+    {
+        if (!_shutdownRequested) SetText(_result, status);
+    }
 
     private void MarkStale(string reason)
     {

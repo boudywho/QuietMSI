@@ -703,7 +703,7 @@ internal static partial class Program
         auto.PerformClick(); Pump(form.ActiveApply);
         Check(bridge.Requests.Last() == new ControlRequest(ControlKind.AutomaticFans, "Advanced") && bridge.Reads == 3, "FanModeWorkflow: Advanced must use explicit mode-only request.");
         Check(Descendants(form).Any(c => c.Text == "Current fan mode · Advanced"), "FanModeWorkflow: Advanced mode must use readback.");
-        Check(Descendants(form).Any(c => c.AccessibleDescription?.Contains("not a factory reset") == true), "FanModeWorkflow: clarify mode switching is not a factory reset.");
+        Check(mode.AccessibleDescription?.Contains("not a factory reset", StringComparison.OrdinalIgnoreCase) == true, "FanModeWorkflow: clarify mode switching is not a factory reset.");
         Check(Descendants(form).Any(c => c.Text.StartsWith("Fan 1 ·")), "FanModeWorkflow: do not invent a CPU/GPU fan mapping.");
         Check(Descendants(form).Any(c => c.AccessibleDescription?.Contains("GPU asleep") == true), "FanModeWorkflow: expose provider sleep/unavailable telemetry reason.");
         Console.WriteLine("PASS FanModeWorkflow (synthetic; Advanced/current curve, explicit Auto, no unsupported editors)");
@@ -741,9 +741,14 @@ internal static partial class Program
         Check(bridge.Reads == 1, "ExitDuringApply: background poll must not run during apply.");
         context.ExitApplication();
         Check(!form.IsDisposed && form.IsApplying, "ExitDuringApply: exit must wait until transaction and readback resolve.");
+        var status = Descendants(form).Single(c => c.Name == "ApplyResult");
+        Check(status.Text.StartsWith("Exit queued", StringComparison.Ordinal), "ExitDuringApply: acknowledge the queued exit.");
+        var statusReplaced = false;
+        status.TextChanged += (_, _) => statusReplaced = true;
         held.SetResult(new(false, "Synthetic transaction finished"));
         Pump(form.ActiveApply); PumpUntil(() => form.IsDisposed);
         Check(bridge.Reads == 2 && bridge.Requests.Count == 1, "ExitDuringApply: finish with readback, no exit write.");
+        Check(!statusReplaced, "ExitDuringApply: readback must not replace the queued-exit status.");
         Console.WriteLine("PASS ExitDuringApply (synthetic held transaction; serialized writes, deferred exit)");
     }
 
@@ -794,6 +799,17 @@ internal static partial class Program
             Pump(form.ExportDiagnosticsAsync(path));
             using var stale = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
             Check(stale.RootElement.GetProperty("ReadOnly").GetBoolean(), "CapabilityDiagnostics: stale state must not be exported as writable.");
+            form.Dispose();
+            try
+            {
+                Pump(form.ExportDiagnosticsAsync(path));
+                throw new InvalidOperationException("CapabilityDiagnostics: a disposed form must reject export.");
+            }
+            catch (ObjectDisposedException error)
+            {
+                Check(error.ObjectName?.EndsWith(".MainForm", StringComparison.Ordinal) == true,
+                    "CapabilityDiagnostics: report disposal of the form, not of its cancellation source.");
+            }
             Console.WriteLine("PASS CapabilityDiagnostics (synthetic capabilities serialized accurately)");
         }
         finally { File.Delete(path); }
