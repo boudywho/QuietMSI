@@ -3,6 +3,16 @@ namespace QuietMSI.Core;
 
 public static class CoolingCurvePlan
 {
+    public static bool HasCompleteTable(HardwareControlState? state)
+    {
+        if (state?.CpuCurvePacket is not { Length: 8 } packet || packet[7] is < 20 or > 100
+            || state.CpuCurve is not { Count: 6 } targets || state.CpuBreakpoints is not { Count: 6 } points) return false;
+        for (var i = 0; i < targets.Count; i++)
+            if (targets[i] != packet[i + 1] || targets[i] < 20 || targets[i] > packet[7] || points[i] is < 0 or > 100
+                || (i > 0 && (targets[i] < targets[i - 1] || points[i] <= points[i - 1]))) return false;
+        return true;
+    }
+
     public static bool SameStableFields(byte[] a,byte[] b) => a.Length==8 && b.Length==8 && a.AsSpan(1,7).SequenceEqual(b.AsSpan(1,7));
     public static byte[] Create(byte[] original, string csv)
     {

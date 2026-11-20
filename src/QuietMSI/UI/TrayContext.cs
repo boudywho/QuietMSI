@@ -8,17 +8,27 @@ public sealed class TrayContext : ApplicationContext
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu;
     private readonly System.Windows.Forms.Timer _pollTimer;
+    private readonly Action? _prepareHardware;
     private bool _exiting;
     private bool _disposed;
     private bool _exitPending;
+    private bool _preparing;
+    private bool _started;
+    private bool _suspended;
+    private bool _drainingRead;
     public MainForm Window { get; }
     public int PollIntervalMilliseconds => _pollTimer.Interval;
 
     public TrayContext(IHardwareBridge bridge) : this(bridge, false) { }
 
-    public TrayContext(IHardwareBridge bridge, bool startInTray)
+    public TrayContext(IHardwareBridge bridge, bool startInTray) : this(bridge, startInTray, null) { }
+
+    internal TrayContext(IHardwareBridge bridge, bool startInTray, Action? prepareHardware)
     {
         Window = new MainForm(bridge);
+        _prepareHardware = prepareHardware;
+        _preparing = prepareHardware is not null;
+        if (_preparing) Window.BeginHardwareSetup();
         if (startInTray) _ = Window.Handle; // Receive the second-launch message even before the first Show.
         // Do not assign ApplicationContext.MainForm: its close semantics would exit the message loop.
         _menu = new ContextMenuStrip();
@@ -33,14 +43,39 @@ public sealed class TrayContext : ApplicationContext
         Window.VisibleChanged += VisibilityChanged;
         Window.Resize += WindowResized;
         Window.FormClosing += ClosingWindow;
-        Window.Shown += FirstShown;
         Window.ApplyCompleted += ApplyCompleted;
         Window.RestoreRequested += (_, _) => ShowWindow();
         SystemEvents.PowerModeChanged += PowerModeChanged;
-        _pollTimer.Start();
+        if (!_preparing) _pollTimer.Start();
     }
 
-    private async void FirstShown(object? sender, EventArgs e) => await Window.PollAsync();
+    internal async Task StartAsync()
+    {
+        if (_started || _disposed || _exiting) return;
+        _started = true;
+        if (_prepareHardware is not null)
+        {
+            string status;
+            try
+            {
+                await Task.Run(_prepareHardware);
+                status = "Independent firmware support is ready. MSI Center is not required.";
+            }
+            catch (Exception error)
+            {
+                status = "Hardware support needs attention · " + error.Message;
+                await Task.Run(() => RuntimeLog.Write("Hardware support setup", error));
+            }
+            _preparing = false;
+            if (_disposed || _exiting) return;
+            Window.FinishHardwareSetup(status);
+            if (_exitPending) { ExitApplication(); return; }
+        }
+        if (_suspended) return;
+        _pollTimer.Start();
+        if (Window.LastSnapshot is null) await Window.PollAsync();
+    }
+
     private async void PollTick(object? sender, EventArgs e)
     {
         Window.UpdateFreshness(DateTimeOffset.UtcNow);
@@ -60,11 +95,11 @@ public sealed class TrayContext : ApplicationContext
 
     private void ClosingWindow(object? sender, FormClosingEventArgs e)
     {
-        if (Window.IsApplying)
+        if (Window.HasPendingApply || _preparing)
         {
             e.Cancel = true;
             Window.Hide();
-            if (e.CloseReason != CloseReason.UserClosing) _exitPending = true;
+            if (e.CloseReason != CloseReason.UserClosing) ExitApplication();
             return;
         }
         if (_exiting || e.CloseReason is CloseReason.WindowsShutDown or CloseReason.TaskManagerClosing or CloseReason.ApplicationExitCall) return;
@@ -74,11 +109,13 @@ public sealed class TrayContext : ApplicationContext
 
     public void ShowWindow()
     {
-        if (_disposed || _exiting) return;
+        if (_disposed || _exiting || _exitPending) return;
+        var reopening = !Window.Visible;
         Window.Show();
-        Window.WindowState = FormWindowState.Normal;
+        if (Window.WindowState == FormWindowState.Minimized) Window.WindowState = FormWindowState.Normal;
         Window.Activate();
         _pollTimer.Interval = 5000;
+        if (reopening && !_preparing && !_suspended) _ = Window.PollAsync();
     }
 
     private void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
@@ -86,36 +123,52 @@ public sealed class TrayContext : ApplicationContext
         if (_disposed || _exiting || !Window.IsHandleCreated || Window.IsDisposed) return;
         try
         {
-            Window.BeginInvoke((Action)(() =>
+            Window.BeginInvoke((Action)(async () =>
             {
-                if (_disposed || _exiting) return;
-                if (e.Mode == PowerModes.Suspend)
+                if (_disposed || _exiting || _exitPending) return;
+                if (e.Mode == PowerModes.Suspend && !_suspended)
                 {
+                    _suspended = true;
                     _pollTimer.Stop();
                     Window.SetSuspended(true);
                 }
-                else if (e.Mode == PowerModes.Resume)
+                else if (e.Mode == PowerModes.Resume && _suspended)
                 {
+                    _suspended = false;
                     Window.SetSuspended(false);
-                    _pollTimer.Start();
+                    if (!_preparing)
+                    {
+                        _pollTimer.Start();
+                        await Window.RefreshAfterResumeAsync();
+                    }
                 }
             }));
         }
         catch (InvalidOperationException) { /* Window is shutting down. */ }
     }
 
-    public void ExitApplication()
+    public async void ExitApplication()
     {
-        if (_exiting) return;
-        if (Window.IsApplying)
+        if (_exiting || _disposed || _drainingRead) return;
+        if (Window.HasPendingApply || _preparing)
         {
             _exitPending = true;
             _pollTimer.Stop();
-            Window.ShowOperationStatus("Exit queued; waiting for transaction and readback.");
+            Window.RequestShutdown(_preparing ? "Exit queued · Finishing hardware support setup." : Window.IsApplying
+                ? "Exit queued · Waiting for transaction and readback." : "Exit queued · Cancelling the unsent request.");
             return;
         }
-        _exiting = true;
+        _exitPending = true;
         _pollTimer.Stop();
+        if (!Window.ActiveSample.IsCompleted)
+        {
+            _drainingRead = true;
+            Window.RequestShutdown("Exiting · Stopping telemetry.");
+            try { await Window.ActiveSample; }
+            finally { _drainingRead = false; }
+            if (_disposed || _exiting) return;
+        }
+        _exiting = true;
         _tray.Visible = false;
         Window.Close();
         Window.Dispose();

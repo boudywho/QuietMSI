@@ -11,8 +11,9 @@ public sealed class WindowsHardwareBridge : ReadOnlyBridge, IControlCapabilityPr
     private readonly Func<ProcessStartInfo> _worker;
     private readonly TimeSpan _deadline;
     private readonly Action<Process>? _started;
-    private bool _quarantined;
+    private volatile bool _quarantined;
     private byte[]? _originalCpuCurve;
+    private int[]? _originalCpuBreakpoints;
     private byte[]? _lastAppliedCpuCurve;
 
     public WindowsHardwareBridge(Func<ProcessStartInfo>? worker = null, TimeSpan? deadline = null, Action<Process>? started = null)
@@ -31,7 +32,10 @@ public sealed class WindowsHardwareBridge : ReadOnlyBridge, IControlCapabilityPr
         return info;
     }
 
-    public override async Task<HardwareSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken)
+    public override Task<HardwareSnapshot> ReadSnapshotAsync(CancellationToken cancellationToken) =>
+        Task.Run(() => ReadWorkerAsync(cancellationToken), cancellationToken);
+
+    private async Task<HardwareSnapshot> ReadWorkerAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         Process? worker = null;
@@ -43,24 +47,27 @@ public sealed class WindowsHardwareBridge : ReadOnlyBridge, IControlCapabilityPr
             info.RedirectStandardOutput = true; info.RedirectStandardError = true;
             worker = Process.Start(info) ?? throw new InvalidOperationException("Telemetry worker did not start.");
             _started?.Invoke(worker);
-            var output = worker.StandardOutput.ReadToEndAsync();
-            var errors = worker.StandardError.ReadToEndAsync();
             using var timeout = new CancellationTokenSource(_deadline);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
-            try { await worker.WaitForExitAsync(linked.Token).ConfigureAwait(false); }
+            var output = worker.StandardOutput.ReadToEndAsync(linked.Token);
+            var errors = worker.StandardError.ReadToEndAsync(linked.Token);
+            try { await Task.WhenAll(worker.WaitForExitAsync(linked.Token), output, errors).ConfigureAwait(false); }
             catch (OperationCanceledException)
             {
-                Terminate(worker);
                 cancellationToken.ThrowIfCancellationRequested();
-                throw new TimeoutException("Telemetry provider exceeded the 10-second deadline; its read-only worker was terminated.");
+                throw new TimeoutException($"Telemetry provider exceeded its {_deadline.TotalSeconds:g}-second deadline.");
             }
             if (worker.ExitCode != 0) throw new InvalidOperationException("Telemetry worker failed: " + (await errors.ConfigureAwait(false)).Trim());
             var text = await output.ConfigureAwait(false);
             var snapshot = JsonSerializer.Deserialize<HardwareSnapshot>(text) ?? throw new InvalidOperationException("Telemetry worker returned no valid snapshot.");
-            if (_originalCpuCurve is null && snapshot.Identity.EcFirmware == "16R6EMS1.106" && snapshot.Controls?.CpuCurvePacket is { Length: 8 } baseline)
+            if (_originalCpuCurve is null && ProtectedTelemetryPolicy.SupportedModel(snapshot.Identity)
+                && snapshot.Identity.EcFirmware == "16R6EMS1.106" && snapshot.Controls is { } controls
+                && CoolingCurvePlan.HasCompleteTable(controls))
             {
-                _originalCpuCurve = (byte[])baseline.Clone();
+                var baseline = controls.CpuCurvePacket!;
                 new MsiControlTransport().Record("SessionOriginalCpuCurve", new { snapshot.Identity, table = baseline });
+                _originalCpuBreakpoints = controls.CpuBreakpoints!.ToArray();
+                _originalCpuCurve = (byte[])baseline.Clone();
             }
             return snapshot;
         }
@@ -122,7 +129,10 @@ public sealed class WindowsHardwareBridge : ReadOnlyBridge, IControlCapabilityPr
         {
             MsiControlStateReader.VerifyIdentity();
             if (_originalCpuCurve is null) throw new InvalidOperationException("No captured session original table; curve change denied.");
-            var current = MsiCpuCurve.ReadTable();
+            var state = MsiControlStateReader.Read();
+            if (!CoolingCurvePlan.HasCompleteTable(state) || !state.CpuBreakpoints!.SequenceEqual(_originalCpuBreakpoints!))
+                throw new InvalidOperationException("CPU temperature points changed or are unavailable; no curve write sent.");
+            var current = state.CpuCurvePacket!;
             var expected = _lastAppliedCpuCurve ?? _originalCpuCurve;
             if (!CoolingCurvePlan.SameStableFields(current,expected)) throw new InvalidOperationException("Curve differs from captured/last-applied table; another controller may have changed it. No overwrite.");
             var next = request.Value == "Restore" ? (byte[])_originalCpuCurve.Clone() : CoolingCurvePlan.Create(_originalCpuCurve, request.Value);

@@ -85,6 +85,7 @@ internal static partial class Program
         pending = bridge.HeldRead; bridge.HeldRead = null; pending.SetResult(bridge.Snapshot);
         Pump(read); Pump(apply);
         Check(bridge.Requests.Count == 1 && form.IsStale, "ApplyDuringRead: suspension must cancel queued intent without writing.");
+        Check(Descendants(form).Any(c => c.Name == "ApplyResult" && c.Text.Contains("No command sent")), "ApplyDuringRead: a discarded request must not keep reporting Waiting.");
         form.SetSuspended(false); Pump(form.PollAsync());
         bridge.HeldRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
         read = form.PollAsync(); apply = form.ApplyControlAsync(new(ControlKind.PerformanceProfile, "High"));

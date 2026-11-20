@@ -45,10 +45,7 @@ internal static class Program
             }
             var startup = args.Length == 1 && args[0] == "--startup";
             if (!created) { if (!startup) UI.AppInstance.ShowExisting(); return 0; }
-            try { FirmwareSupport.EnsureInstalled(); UI.HardwareSupportStatus.Text = "Independent firmware support installed · MSI Center services are not required."; }
-            catch (Exception error) { UI.RuntimeLog.Write("Hardware support setup", error); UI.HardwareSupportStatus.Text = "Hardware support needs attention · " + error.Message; }
-            if (startup) UIHost.RunStartup(new WindowsHardwareBridge());
-            else UIHost.Run(new WindowsHardwareBridge());
+            UIHost.RunApplication(new WindowsHardwareBridge(), startup, FirmwareSupport.EnsureInstalled);
             return 0;
         }
         catch (Exception e)

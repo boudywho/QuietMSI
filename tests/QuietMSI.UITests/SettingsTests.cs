@@ -63,4 +63,33 @@ internal static partial class Program
         tray.ExitApplication(); UiEvents();
         Console.WriteLine("PASS StartupTray (initial hidden HWND, 30-second polling, second-launch reopen, explicit exit)");
     }
+
+    private static void TestBackgroundHardwareSetup()
+    {
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var dispatcher = Environment.CurrentManagedThreadId;
+        var worker = dispatcher;
+        var bridge = new SyntheticControlBridge();
+        using var tray = new TrayContext(bridge, startInTray: false, prepareHardware: () =>
+        {
+            worker = Environment.CurrentManagedThreadId;
+            started.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("Setup fixture was not released.");
+        });
+        tray.ShowWindow(); UiEvents();
+        var setup = tray.StartAsync();
+        try
+        {
+            PumpUntil(() => started.IsSet);
+            Pump(tray.Window.PollAsync());
+            Check(tray.Window.Visible && worker != dispatcher && bridge.Reads == 0, "BackgroundSetup: paint the window, but do not sample while setup holds the worker.");
+            tray.ExitApplication();
+            Check(!tray.Window.IsDisposed, "BackgroundSetup: explicit exit must not interrupt machine setup.");
+        }
+        finally { release.Set(); }
+        Pump(setup);
+        Check(tray.Window.IsDisposed && bridge.Reads == 0 && bridge.Requests.Count == 0, "BackgroundSetup: pending exit must not start a new sample or write.");
+        Console.WriteLine("PASS BackgroundSetup (worker thread, no competing reads, deferred exit)");
+    }
 }

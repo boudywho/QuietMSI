@@ -8,6 +8,7 @@ public sealed partial class MainForm
     private readonly IStartupRegistration _startupRegistration;
     private CheckBox _autoStart = null!;
     private Label _startupStatus = null!;
+    private Label _hardwareSupport = null!;
     private bool _loadingStartup, _changingStartup;
     internal Task StartupLoaded { get; private set; } = Task.CompletedTask;
 
@@ -86,7 +87,8 @@ public sealed partial class MainForm
         about.Controls.Add(TextLabel("About QuietMSI", _theme.Heading));
         var version = Assembly.GetEntryAssembly()?.GetName().Version;
         about.Controls.Add(TextLabel($"Version {version?.ToString(3) ?? "development"} · Native Windows app", _theme.Body));
-        about.Controls.Add(TextLabel(HardwareSupportStatus.Text, _theme.Small));
+        _hardwareSupport = TextLabel("Hardware support is reported by the telemetry provider.", _theme.Small);
+        about.Controls.Add(_hardwareSupport);
         about.Controls.Add(TextLabel("Close or minimize to keep the app in the tray. Use the tray menu to exit.", _theme.Small));
         _aboutCard = WrapCard(about, "AboutCard"); _aboutCard.AccessibleName = "About QuietMSI";
         _dashboard.Controls.AddRange(new Control[] { _appearanceCard, _startupCard, _updateCard, _aboutCard });

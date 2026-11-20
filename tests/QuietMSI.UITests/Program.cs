@@ -82,6 +82,7 @@ internal static partial class Program
             }
             TestSettings();
             TestStartupDefinition();
+            TestBackgroundHardwareSetup();
             TestResizePainting();
             TestPollingPaintStability();
             TestApplyDuringRead();
@@ -727,12 +728,15 @@ internal static partial class Program
         var bridge = new SyntheticControlBridge { FailApply = true };
         using var form = new QuietMSI.UI.MainForm(bridge, null);
         form.Show(); Pump(form.PollAsync());
+        var draft = (QuietMSI.UI.ProfileSelector)Descendants(form).Single(c => c.Name == "Hardware_Profile");
+        draft.SelectedItem = "Turbo";
         var apply = (Button)Descendants(form).Single(c => c.Name == "Hardware_ApplyProfile");
         apply.PerformClick(); Pump(form.ActiveApply);
         Check(bridge.Requests.Count == 1 && bridge.Reads == 2, "FailedApply: exactly one request then readback required.");
         Check(form.LastError == "Synthetic firmware denied request" && Descendants(form).Any(c => c.Name == "ApplyResult" && c.Text.Contains("Apply failed") && c.Text.Contains("denied")), "FailedApply: specific failure must remain visible.");
         Pump(form.PollAsync());
         Check(form.LastError == "Synthetic firmware denied request", "FailedApply: background polling must not erase the transaction error.");
+        Check((string?)draft.SelectedItem == "Turbo" && bridge.State.Performance != 0xc4, "FailedApply: keep the unsaved draft separate from hardware state.");
         Console.WriteLine("PASS FailedApply (synthetic failure remains visible after refresh)");
     }
 

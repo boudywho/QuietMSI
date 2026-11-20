@@ -21,14 +21,16 @@ public sealed partial class MainForm : Form
     private readonly Dictionary<ControlKind, Label> _reasons = new();
     private readonly Dictionary<ControlKind, bool> _reasonVisibility = new();
     private readonly CancellationTokenSource _shutdown = new();
-    private bool _polling, _resourcesDisposed, _suspended;
-    private Task _activePoll = Task.CompletedTask;
+    private bool _polling, _resourcesDisposed, _suspended, _preparing, _shutdownRequested;
+    private CancellationTokenSource? _pollCancellation;
+    private Task<bool> _sampleTask = Task.FromResult(false);
     private bool _applyQueued;
     private (bool Dark, bool HighContrast)? _appliedPalette;
     private int _sampleGeneration;
     private string? _applyError;
     private bool _profileDirty, _boostDirty, _fanModeDirty, _renderingState;
     public bool IsApplying { get; private set; }
+    internal bool HasPendingApply => _applyQueued || IsApplying;
     public Task ActiveApply { get; private set; } = Task.CompletedTask;
     public event EventHandler? ApplyCompleted;
     public event EventHandler? RestoreRequested;
@@ -409,7 +411,7 @@ public sealed partial class MainForm : Form
             var available = capability.Kind == kind && capability.CanWrite && ValidState(kind) && !IsStale && !_suspended;
             // A safe background read need not disable a fresh focused draft input. Actions remain serialized.
             available &= kind is ControlKind.PerformanceProfile or ControlKind.CoolerBoost or ControlKind.AutomaticFans or ControlKind.FanCurve;
-            var enabled = available && !IsApplying;
+            var enabled = available && !HasPendingApply && !_shutdownRequested;
             if (_hardware.TryGetValue(kind, out var controls)) foreach (var control in controls) control.Enabled = enabled;
             var reason = kind == ControlKind.FanCurve && !ValidCpuCurveState()
                 ? "A complete captured CPU table, unchanged fixed temperatures and preserved terminal cap are required. " + capability.Reason
@@ -438,20 +440,10 @@ public sealed partial class MainForm : Form
         _ => false
     };
 
-    private static bool CompleteCpuCurve(HardwareControlState? state)
-    {
-        if (state?.CpuCurvePacket is not { Length: 8 } packet || packet[7] is < 20 or > 100
-            || state.CpuCurve is not { Count: 6 } curve || state.CpuBreakpoints is not { Count: 6 } points) return false;
-        for (var i = 0; i < 6; i++)
-            if (curve[i] != packet[i + 1] || curve[i] < 20 || curve[i] > packet[7] || points[i] < 0 || points[i] > 100
-                || (i > 0 && (curve[i] < curve[i - 1] || points[i] <= points[i - 1]))) return false;
-        return true;
-    }
-
     private bool ValidCpuCurveState()
     {
         var state = LastSnapshot?.Controls;
-        return _originalCpuCurve is not null && _originalCpuBreakpoints is not null && CompleteCpuCurve(state)
+        return _originalCpuCurve is not null && _originalCpuBreakpoints is not null && CoolingCurvePlan.HasCompleteTable(state)
             && state!.CpuBreakpoints!.SequenceEqual(_originalCpuBreakpoints)
             && state.CpuCurvePacket![7] == _originalCpuCurve[7]
             && state.CpuCurve!.Select((value, i) => value >= _originalCpuCurve[i + 1]).All(valid => valid);
@@ -460,13 +452,12 @@ public sealed partial class MainForm : Form
     private void RenderCpuCurve(HardwareControlState? state)
     {
         var capability = CapabilityFor(ControlKind.FanCurve);
-        if (_originalCpuCurve is null && capability.Kind == ControlKind.FanCurve && capability.CanWrite && CompleteCpuCurve(state))
+        if (_originalCpuCurve is null && capability.Kind == ControlKind.FanCurve && capability.CanWrite && CoolingCurvePlan.HasCompleteTable(state))
         {
             _originalCpuCurve = (byte[])state!.CpuCurvePacket!.Clone();
             _originalCpuBreakpoints = state.CpuBreakpoints!.ToArray();
         }
         if (!ValidCpuCurveState()) return;
-        _renderingState = true;
         for (var i = 0; i < 6; i++)
         {
             _curveBreakpoints[i].Text = _originalCpuBreakpoints![i] + "°C · %";
@@ -474,7 +465,6 @@ public sealed partial class MainForm : Form
             _curveInputs[i].Minimum = _originalCpuCurve[i + 1];
             if (!_curveDirty) _curveInputs[i].Value = state!.CpuCurve![i];
         }
-        _renderingState = false;
     }
 
     private bool ValidCpuCurveRequest(ControlRequest request)
@@ -486,71 +476,91 @@ public sealed partial class MainForm : Form
 
     private void BeginApply(ControlRequest request)
     {
-        if (IsApplying || IsDisposed) return;
-        ActiveApply = ApplyControlAsync(request);
+        _ = ApplyControlAsync(request);
     }
 
-    public void ShowOperationStatus(string text)
+    public Task ApplyControlAsync(ControlRequest request)
     {
-        if (!IsDisposed) _result.Text = text;
+        if (HasPendingApply || IsDisposed || _shutdownRequested) return Task.CompletedTask;
+        return ActiveApply = ApplyControlCoreAsync(request);
     }
 
-    public async Task ApplyControlAsync(ControlRequest request)
+    private async Task ApplyControlCoreAsync(ControlRequest request)
     {
-        if (_applyQueued || IsApplying || IsDisposed || _shutdown.IsCancellationRequested) return;
-        if (_polling)
-        {
-            _applyQueued = true;
-            _result.Text = "Waiting for the current sample before applying…";
-            try { await _activePoll; }
-            finally { _applyQueued = false; }
-        }
-        UpdateFreshness(DateTimeOffset.UtcNow);
-        var cap = CapabilityFor(request.Kind);
-        if (IsDisposed || _shutdown.IsCancellationRequested || IsApplying || _polling || _suspended || IsStale || !ValidState(request.Kind) || !cap.CanWrite || cap.Kind != request.Kind) return;
-        if (request.Kind == ControlKind.FanCurve && !ValidCpuCurveRequest(request))
-        {
-            _result.Text = "Curve not applied · Use six nondecreasing percentages within the captured-original bounds.";
-            return;
-        }
-        IsApplying = true;
-        _applyError = null;
-        RefreshCapabilities();
-        _result.Text = "Applying; waiting for backend verification…";
+        var generation = _sampleGeneration;
         var token = _shutdown.Token;
         try
         {
-            var result = await _bridge.ApplyAsync(request, token);
-            if (IsDisposed || token.IsCancellationRequested) return;
-            if (request.Kind == ControlKind.PerformanceProfile) _profileDirty = false;
-            if (request.Kind == ControlKind.CoolerBoost) _boostDirty = false;
-            if (request.Kind == ControlKind.AutomaticFans) _fanModeDirty = false;
-            if (request.Kind == ControlKind.FanCurve) _curveDirty = false;
-            // Poll even a failed transaction: the backend may have rolled back after a write.
-            await StartPoll(true);
-            if (IsDisposed || token.IsCancellationRequested) return;
-            _result.Text = (result.Applied ? "Backend verified · " : "Apply failed · ") + result.Message;
-            if (result.Applied && (IsStale || !ReadbackMatches(request)))
+            if (_polling)
             {
-                LastError = _applyError = IsStale ? "UI readback unavailable; Refresh required." : "UI readback mismatch; requested value was not observed.";
-                _result.Text = _applyError + " · Backend response: " + result.Message;
+                _applyQueued = true;
+                _result.Text = "Waiting for the current sample before applying…";
+                RefreshCapabilities();
+                await _sampleTask;
             }
-            if (!result.Applied) LastError = _applyError = result.Message;
+            if (IsDisposed || token.IsCancellationRequested) return;
+            UpdateFreshness(DateTimeOffset.UtcNow);
+            var cap = CapabilityFor(request.Kind);
+            if (_shutdownRequested || _preparing || _suspended || generation != _sampleGeneration || IsStale || !ValidState(request.Kind) || !cap.CanWrite || cap.Kind != request.Kind)
+            {
+                _result.Text = "Not applied · No command sent. Refresh hardware state before applying again.";
+                return;
+            }
+            if (request.Kind == ControlKind.FanCurve && !ValidCpuCurveRequest(request))
+            {
+                _result.Text = "Curve not applied · Use six nondecreasing percentages within the captured-original bounds.";
+                return;
+            }
+            IsApplying = true;
+            _applyQueued = false;
+            _applyError = null;
+            RefreshCapabilities();
+            _result.Text = "Applying · Waiting for hardware verification…";
+            var transaction = _bridge.ApplyAsync(request, token);
+            using var notice = CancellationTokenSource.CreateLinkedTokenSource(token);
+            if (await Task.WhenAny(transaction, Task.Delay(TimeSpan.FromSeconds(12), notice.Token)) != transaction && !token.IsCancellationRequested)
+                _result.Text = "Hardware has not responded yet · Result unconfirmed. No retry will be sent.";
+            notice.Cancel();
+            var result = await transaction;
+            if (IsDisposed || token.IsCancellationRequested) return;
+            // A failed transaction may still have changed hardware. Never retry it automatically.
+            var refreshed = await StartPoll(true);
+            if (IsDisposed || token.IsCancellationRequested) return;
+            if (!result.Applied)
+            {
+                LastError = _applyError = result.Message;
+                _result.Text = "Apply failed · " + result.Message;
+            }
+            else if (!refreshed || IsStale || !ReadbackMatches(request))
+            {
+                LastError = _applyError = !refreshed || IsStale ? "UI readback unavailable; Refresh required." : "UI readback mismatch; requested value was not observed.";
+                _result.Text = _applyError;
+            }
+            else
+            {
+                if (request.Kind == ControlKind.PerformanceProfile) _profileDirty = false;
+                if (request.Kind == ControlKind.CoolerBoost) _boostDirty = false;
+                if (request.Kind == ControlKind.AutomaticFans) _fanModeDirty = false;
+                if (request.Kind == ControlKind.FanCurve) _curveDirty = false;
+                RenderDrafts(LastSnapshot!.Controls);
+                _result.Text = "Backend verified · " + result.Message;
+            }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception exception)
         {
             if (!IsDisposed && !token.IsCancellationRequested)
             {
-                RuntimeLog.Write("Apply", exception);
                 LastError = _applyError = exception.Message;
                 _result.Text = "Apply failed · " + exception.Message;
                 MarkStale("Transaction state unknown; Refresh required");
+                await Task.Run(() => RuntimeLog.Write("Apply", exception));
             }
         }
         finally
         {
             IsApplying = false;
+            _applyQueued = false;
             if (!IsDisposed) { RefreshCapabilities(); ApplyCompleted?.Invoke(this, EventArgs.Empty); }
         }
     }
@@ -581,10 +591,10 @@ public sealed partial class MainForm : Form
 
     public Task PollAsync() => StartPoll(false);
 
-    private Task StartPoll(bool readback)
+    private Task<bool> StartPoll(bool readback)
     {
-        if (_polling) return _activePoll;
-        return _activePoll = PollAsync(readback);
+        if (_polling) return _sampleTask;
+        return _sampleTask = ReadAndRenderAsync(readback);
     }
 
     private void SetTip(Control control, string? text)
@@ -592,16 +602,18 @@ public sealed partial class MainForm : Form
         if (_tips.GetToolTip(control) != text) _tips.SetToolTip(control, text);
     }
 
-    private async Task PollAsync(bool readback)
+    private async Task<bool> ReadAndRenderAsync(bool readback)
     {
-        if (_polling || (IsApplying && !readback) || _suspended || IsDisposed || _shutdown.IsCancellationRequested) return;
+        if ((!readback && (HasPendingApply || _shutdownRequested)) || _preparing || _suspended || IsDisposed || _shutdown.IsCancellationRequested) return false;
         _polling = true;
         var generation = _sampleGeneration;
-        var token = _shutdown.Token;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        _pollCancellation = cancellation;
+        var token = cancellation.Token;
         try
         {
             var snapshot = await _bridge.ReadSnapshotAsync(token);
-            if (IsDisposed || token.IsCancellationRequested || _suspended || generation != _sampleGeneration) return;
+            if (IsDisposed || token.IsCancellationRequested || _suspended || generation != _sampleGeneration) return false;
             using var viewportUpdate = _viewport.PreserveViewport();
             LastSnapshot = snapshot;
             LastError = _applyError;
@@ -611,18 +623,7 @@ public sealed partial class MainForm : Form
             SetTip(_machine, _machine.AccessibleDescription);
             _sampling.Text = $"{(_bridge is IControlCapabilityProvider ? "Live" : "Read-only")} · {(IsStale ? "Stale sample" : "Updated")} {snapshot.Timestamp.ToLocalTime():HH:mm:ss}";
             _current.Text = $"Profile {Profile(snapshot.Controls?.Performance)} · Fans {FanMode(snapshot.Controls?.FanMode)} · Boost {(snapshot.Controls?.Boost is byte boost ? ((boost & 0x80) != 0 ? "On" : "Off") : "unavailable")}";
-            _renderingState = true;
-            if (!_profileDirty && snapshot.Controls?.Performance is byte performance)
-            {
-                var selector = (ProfileSelector)_hardware[ControlKind.PerformanceProfile][0];
-                selector.SelectedItem = Profile(performance);
-            }
-            if (!_boostDirty && snapshot.Controls?.Boost is byte boostState)
-                ((CheckBox)_hardware[ControlKind.CoolerBoost][0]).Checked = (boostState & 0x80) != 0;
-            if (!_fanModeDirty && snapshot.Controls?.FanMode is byte modeState)
-                ((ComboBox)_hardware[ControlKind.AutomaticFans][0]).SelectedItem = FanMode(modeState);
-            _renderingState = false;
-            RenderCpuCurve(snapshot.Controls);
+            RenderDrafts(snapshot.Controls);
             var layoutChanged = (_cpu.Text == "Unavailable") != (Temperature(snapshot.CpuCelsius) == "Unavailable")
                 || (_gpu.Text == "Unavailable") != (Temperature(snapshot.GpuCelsius) == "Unavailable")
                 || _cpuFan.Text != Fan("Fan 1", snapshot.CpuFan) || _gpuFan.Text != Fan("Fan 2", snapshot.GpuFan);
@@ -642,19 +643,35 @@ public sealed partial class MainForm : Form
             SetTip(_cpu, snapshot.Status);
             SetTip(_gpu, _gpu.AccessibleDescription);
             SetTip(_sampling, snapshot.Status);
+            return true;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception exception)
         {
             if (!IsDisposed && !token.IsCancellationRequested)
             {
-                if (LastError != exception.Message) RuntimeLog.Write("Sample", exception);
+                var log = LastError != exception.Message;
                 LastError = exception.Message;
                 MarkStale("Sample failed: " + exception.Message);
-                _result.Text = "Refresh failed · " + exception.Message;
+                if (_applyError is null && !HasPendingApply) _result.Text = "Refresh failed · " + exception.Message;
+                if (log) await Task.Run(() => RuntimeLog.Write("Sample", exception));
             }
         }
-        finally { _polling = false; if (!IsDisposed) RefreshCapabilities(); }
+        finally { _pollCancellation = null; _polling = false; if (!IsDisposed) RefreshCapabilities(); }
+        return false;
+    }
+
+    private void RenderDrafts(HardwareControlState? state)
+    {
+        _renderingState = true;
+        try
+        {
+            if (!_profileDirty) ((ProfileSelector)_hardware[ControlKind.PerformanceProfile][0]).SelectedItem = Profile(state?.Performance);
+            if (!_boostDirty && state?.Boost is byte boost) ((CheckBox)_hardware[ControlKind.CoolerBoost][0]).Checked = (boost & 0x80) != 0;
+            if (!_fanModeDirty) ((ComboBox)_hardware[ControlKind.AutomaticFans][0]).SelectedItem = FanMode(state?.FanMode);
+            RenderCpuCurve(state);
+        }
+        finally { _renderingState = false; }
     }
 
     public void UpdateFreshness(DateTimeOffset now)
@@ -666,11 +683,44 @@ public sealed partial class MainForm : Form
 
     public void SetSuspended(bool suspended)
     {
-        if (IsDisposed) return;
+        if (IsDisposed || _suspended == suspended) return;
         _suspended = suspended;
         _sampleGeneration++;
+        if (suspended) _pollCancellation?.Cancel();
         MarkStale(suspended ? "Sampling paused while Windows is suspended" : "Windows resumed; waiting for a fresh sample");
     }
+
+    internal async Task RefreshAfterResumeAsync()
+    {
+        var generation = _sampleGeneration;
+        await _sampleTask;
+        if (HasPendingApply) await ActiveApply;
+        if (!IsDisposed && !_shutdownRequested && generation == _sampleGeneration && IsStale) await PollAsync();
+    }
+
+    internal void BeginHardwareSetup()
+    {
+        _preparing = true;
+        _hardwareSupport.Text = "Preparing Windows hardware support…";
+        _sampling.Text = _hardwareSupport.Text;
+    }
+
+    internal void FinishHardwareSetup(string status)
+    {
+        _preparing = false;
+        _hardwareSupport.Text = status;
+        if (_page == "Settings") LayoutDashboard();
+    }
+
+    internal void RequestShutdown(string status)
+    {
+        _shutdownRequested = true;
+        if (!IsApplying) _pollCancellation?.Cancel();
+        _result.Text = status;
+        RefreshCapabilities();
+    }
+
+    internal Task ActiveSample => _sampleTask;
 
     private void MarkStale(string reason)
     {

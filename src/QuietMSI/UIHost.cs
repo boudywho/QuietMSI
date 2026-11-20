@@ -9,23 +9,14 @@ public static class UIHost
     /// <summary>Run from the application's STA entry point. Smoke never reads the supplied bridge.</summary>
     public static void Run(IHardwareBridge bridge, bool smokeTest = false, string? screenshotPath = null)
     {
-        ArgumentNullException.ThrowIfNull(bridge);
-        if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
-            throw new InvalidOperationException("QuietMSI UI must run on an STA thread.");
-        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-        // Route UI faults to Program's logged fatal-error boundary rather than the
-        // framework's Continue dialog, which can leave an indeterminate controller running.
-        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
         if (!smokeTest)
         {
-            using var context = new TrayContext(bridge);
-            context.ShowWindow();
-            Application.Run(context);
+            RunApplication(bridge, startInTray: false);
             return;
         }
 
+        ArgumentNullException.ThrowIfNull(bridge);
+        ConfigureWindowsForms();
         using var form = new MainForm(new ReadOnlyBridge());
         using var deadline = new System.Windows.Forms.Timer { Interval = 8000 };
         Exception? failure = null;
@@ -64,15 +55,25 @@ public static class UIHost
         if (failure is not null) throw new InvalidOperationException("QuietMSI UI smoke failed.", failure);
     }
 
-    public static void RunStartup(IHardwareBridge bridge)
+    internal static void RunApplication(IHardwareBridge bridge, bool startInTray, Action? prepareHardware = null)
     {
+        ArgumentNullException.ThrowIfNull(bridge);
+        ConfigureWindowsForms();
+        using var context = new TrayContext(bridge, startInTray, prepareHardware);
+        if (!startInTray) context.ShowWindow();
+        context.Window.BeginInvoke((Action)(() => _ = context.StartAsync()));
+        Application.Run(context);
+    }
+
+    private static void ConfigureWindowsForms()
+    {
+        if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
+            throw new InvalidOperationException("QuietMSI UI must run on an STA thread.");
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+        // Let the entry point log fatal UI errors rather than continuing in an unknown state.
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        using var context = new TrayContext(bridge, startInTray: true);
-        _ = context.Window.PollAsync();
-        Application.Run(context);
     }
 
     private static IEnumerable<Control> Descendants(Control parent)

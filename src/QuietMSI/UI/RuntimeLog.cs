@@ -22,7 +22,7 @@ internal static class RuntimeLog
                 File.AppendAllText(path, $"{DateTimeOffset.Now:O} QuietMSI {version} [{operation}] {exception}\n", Encoding.UTF8);
             }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
         { /* A failed support log must never prevent sampling or shutdown. */ }
     }
 }
