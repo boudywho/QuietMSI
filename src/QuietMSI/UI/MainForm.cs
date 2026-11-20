@@ -68,8 +68,6 @@ public sealed partial class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         Icon = _appIcon = AppIcon.Load();
         using (var headerIcon = AppIcon.Load(64)) _brandImage = headerIcon.ToBitmap();
-        var work = Screen.FromControl(this).WorkingArea;
-        if (Width > work.Width || Height > work.Height) Size = new Size(Math.Min(Width, work.Width), Math.Min(Height, work.Height));
 
         var header = new BufferedPanel { Dock = DockStyle.Top, Height = 104, TabIndex = 0 };
         var mark = new PictureBox { SizeMode = PictureBoxSizeMode.Zoom, Image = _brandImage, AccessibleName = "QuietMSI icon" };
@@ -273,7 +271,14 @@ public sealed partial class MainForm : Form
             if (!_settings.Write(selection)) SetOperationStatus("Appearance changed; preference could not be saved.");
         };
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
-        Shown += (_, _) => { PositionHeader(); PositionFooter(); ApplyTheme(true); LayoutDashboard(); _navigation[_page].Focus(); };
+        Shown += (_, _) =>
+        {
+            PositionHeader();
+            PositionFooter();
+            ApplyTheme(true);
+            FitInitialWindow();
+            _navigation[_page].Focus();
+        };
         Shown += (_, _) => StartupLoaded = LoadStartupAsync();
         PositionHeader(); PositionFooter(); ApplyTheme(); RefreshCapabilities(); LayoutDashboard();
     }

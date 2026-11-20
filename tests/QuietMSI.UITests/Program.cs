@@ -65,6 +65,7 @@ internal static partial class Program
             }
             if(args.Contains("--keyboard-regression")) { TestKeyboardViewport(); TestAsyncPollingViewport(); TestPollingScrollStability(); return 0; }
             if(args.Contains("--compact-regression")) { TestCompactTelemetryFit(); return 0; }
+            if(args.Contains("--viewport-regression")) { TestDashboardFirstViewport(); TestActionVisibility(); return 0; }
             if(args.Contains("--brand-regression")) { TestBrandWidthFit(); return 0; }
             if(args.Contains("--icon-regression")) { TestAppIcon(); return 0; }
             if(args.Contains("--chart-regression")) { TestChartAnnotationFit(); return 0; }
@@ -199,8 +200,14 @@ internal static partial class Program
         var viewport = Descendants(form).Single(c => c.AccessibleName == "Telemetry and settings");
         var chart = Descendants(form).Single(c => c.Name == "CurrentCurveCard");
         var bounds = viewport.RectangleToScreen(viewport.ClientRectangle);
+        var work = Screen.FromHandle(form.Handle).WorkingArea;
+        var screenLimited = form.Height == work.Height && viewport is ScrollableControl { VerticalScroll.Visible: true };
         Check(!chart.Visible, "DashboardFirstViewport: Overview reserves fan curve detail for Cooling.");
-        Check(new[] { "SensorCard", "PerformanceCard", "CoolingCard" }.All(name => bounds.Contains(Descendants(form).Single(c => c.Name == name).RectangleToScreen(Descendants(form).Single(c => c.Name == name).ClientRectangle))), "DashboardFirstViewport: all daily controls fit at the default size.");
+        var cards = new[] { "SensorCard", "PerformanceCard", "CoolingCard" }.Select(name => Descendants(form).Single(c => c.Name == name)).ToArray();
+        var cardBounds = cards.Select(card => card.RectangleToScreen(card.ClientRectangle)).ToArray();
+        Check(work.Contains(form.Bounds), $"DashboardFirstViewport: opening window {form.Bounds} exceeds working area {work} at DPI {form.DeviceDpi}.");
+        Check(cardBounds.All(bounds.Contains) || screenLimited && cardBounds.All(card => card.Left >= bounds.Left && card.Right <= bounds.Right),
+            $"DashboardFirstViewport: daily controls must fit at launch unless the monitor requires scrolling. DPI {form.DeviceDpi}; viewport {bounds}; window {form.Bounds}; work {work}; cards {string.Join(", ", cardBounds)}.");
         var apply = Descendants(form).Single(c => c.Name == "Hardware_ApplyProfile");
         Check(apply is QuietMSI.UI.DashboardButton { Primary: true }, "DashboardFirstViewport: explicit profile Apply must carry the concept's teal primary action.");
         Console.WriteLine("PASS DashboardFirstViewport (all daily controls and primary Apply at default size)");
@@ -777,13 +784,17 @@ internal static partial class Program
     {
         using var form = new QuietMSI.UI.MainForm(new SyntheticControlBridge(), null);
         form.Show(); Pump(form.PollAsync());
-        var bounds = form.RectangleToScreen(form.ClientRectangle);
+        var viewport = Descendants(form).OfType<ScrollableControl>().Single(c => c.AccessibleName == "Telemetry and settings");
+        var bounds = viewport.RectangleToScreen(viewport.ClientRectangle);
+        var screenLimited = form.Height == Screen.FromHandle(form.Handle).WorkingArea.Height && viewport.VerticalScroll.Visible;
         foreach (var name in new[] { "Hardware_ApplyProfile", "Hardware_ApplyBoost", "Hardware_AutomaticFans" })
         {
             var control = Descendants(form).Single(c => c.Name == name);
+            if (screenLimited) viewport.ScrollControlIntoView(control);
             var actual = control.RectangleToScreen(control.ClientRectangle);
-            Check(actual.Top >= bounds.Top && actual.Bottom <= bounds.Bottom, "ActionVisibility: initial window must expose " + name);
+            Check(bounds.Contains(actual), $"ActionVisibility: {(screenLimited ? "scrolling" : "the opening viewport")} must expose {name}; viewport {bounds}; control {actual}.");
         }
+        viewport.AutoScrollPosition = Point.Empty;
         form.ClientSize = new Size(440, 500); UiEvents();
         var gpu = Descendants(form).Single(c => c.Name == "GpuTemperature" && c.Text == "Unavailable");
         Check(gpu.Height < 40, "ActionVisibility: compact unavailable GPU status must not split the word across lines.");

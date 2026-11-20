@@ -53,6 +53,28 @@ public sealed partial class MainForm
         _viewport.AutoScrollPosition = Point.Empty; LayoutDashboard();
     }
 
+    private void FitInitialWindow()
+    {
+        // The real HWND now has a monitor, DPI and native frame. Size the client only once;
+        // later resizes and new telemetry should never resize the window for the user.
+        var work = Screen.FromHandle(Handle).WorkingArea;
+        var frame = Size - ClientSize;
+        var maxWidth = Math.Max(1, work.Width - frame.Width);
+        var maxHeight = Math.Max(1, work.Height - frame.Height);
+        ClientSize = new Size(Math.Min(D(820), maxWidth), Math.Min(D(650), maxHeight));
+        LayoutDashboard();
+
+        var extra = _dashboard.Bottom - _viewport.ClientSize.Height;
+        if (extra > 0 && ClientSize.Height < maxHeight)
+        {
+            ClientSize = new Size(ClientSize.Width, Math.Min(ClientSize.Height + extra, maxHeight));
+            LayoutDashboard();
+        }
+
+        Location = new Point(work.Left + Math.Max(0, (work.Width - Width) / 2),
+            work.Top + Math.Max(0, (work.Height - Height) / 2));
+    }
+
     private void LayoutDashboard()
     {
         if (_dashboardLayout || _sensorCard is null) return;
