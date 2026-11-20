@@ -4,7 +4,7 @@ namespace QuietMSI.UI;
 
 public sealed partial class MainForm
 {
-    private RoundedCard _appearanceCard = null!, _startupCard = null!, _updateCard = null!, _aboutCard = null!;
+    private DashboardCard _appearanceCard = null!, _startupCard = null!, _updateCard = null!, _aboutCard = null!;
     private readonly IStartupRegistration _startupRegistration;
     private CheckBox _autoStart = null!;
     private Label _startupStatus = null!;
@@ -16,7 +16,7 @@ public sealed partial class MainForm
     {
         var appearance = Stack(_theme.Surface, Padding.Empty);
         appearance.Controls.Add(TextLabel("Appearance", _theme.Heading));
-        appearance.Controls.Add(TextLabel("Choose how QuietMSI looks. System follows your Windows theme.", _theme.Small));
+        appearance.Controls.Add(TextLabel("Dark by default. System follows your Windows theme.", _theme.Small));
         var row = ActionRow(appearance);
         row.Controls.Add(TextLabel("App theme"));
         _themeSelector.Width = D(160); _themeSelector.Margin = new Padding(14, 4, 0, 8);
@@ -43,9 +43,9 @@ public sealed partial class MainForm
             catch (Exception error)
             {
                 if (IsDisposed) return;
-                RuntimeLog.Write("Startup setting", error);
                 _loadingStartup = true; _autoStart.Checked = !desired; _loadingStartup = false;
                 _startupStatus.Text = "Could not change startup · " + error.Message;
+                await Task.Run(() => RuntimeLog.Write("Startup setting", error));
             }
             finally { _changingStartup = false; if (!IsDisposed) { _autoStart.Enabled = true; if (_page == "Settings") LayoutDashboard(); } }
         };
@@ -84,7 +84,7 @@ public sealed partial class MainForm
         _updateCard = WrapCard(updates, "UpdatesCard"); _updateCard.AccessibleName = "Application updates";
 
         var about = Stack(_theme.Surface, Padding.Empty);
-        about.Controls.Add(TextLabel("About QuietMSI", _theme.Heading));
+        about.Controls.Add(TextLabel("Device and app", _theme.Heading));
         var version = Assembly.GetEntryAssembly()?.GetName().Version;
         about.Controls.Add(TextLabel($"Version {version?.ToString(3) ?? "development"} · Native Windows app", _theme.Body));
         _hardwareSupport = TextLabel("Hardware support is reported by the telemetry provider.", _theme.Small);
@@ -101,8 +101,12 @@ public sealed partial class MainForm
     }
     private async Task LoadStartupAsync()
     {
-        try { var state = await _startupRegistration.ReadAsync(); if (!IsDisposed) RenderStartup(state); }
+        try
+        {
+            var state = await _startupRegistration.ReadAsync();
+            if (!IsDisposed) { RenderStartup(state); _autoStart.Enabled = true; }
+        }
         catch (Exception error) { if (!IsDisposed) _startupStatus.Text = "Startup unavailable · " + error.Message; }
-        finally { if (!IsDisposed) { _autoStart.Enabled = true; if (_page == "Settings") LayoutDashboard(); } }
+        finally { if (!IsDisposed && _page == "Settings") LayoutDashboard(); }
     }
 }

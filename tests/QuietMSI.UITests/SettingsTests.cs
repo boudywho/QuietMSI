@@ -28,13 +28,15 @@ internal static partial class Program
         startup.Change.SetResult(new(true, "On")); UiEvents();
         Check(toggle.Checked && toggle.Enabled, "Settings: display verified startup registration.");
         startup.Change = new(); toggle.Checked = false;
-        startup.Change.SetException(new IOException("fixture scheduler failure")); UiEvents();
+        startup.Change.SetException(new IOException("fixture scheduler failure")); PumpUntil(() => toggle.Enabled);
         Check(toggle.Checked && toggle.Enabled && Descendants(form).Single(c => c.Name == "StartupStatus").Text.Contains("fixture scheduler failure"), "Settings: failed removal must preserve the actual setting and expose the error.");
         foreach (var size in new[] { new Size(440, 600), new Size(760, 760) })
         {
             form.ClientSize = size; UiEvents();
             var cards = Descendants(form).Where(c => c.Name is "AppearanceCard" or "StartupCard" or "UpdatesCard" or "AboutCard").OrderBy(c => c.Top).ToArray();
-            Check(cards.All(c => c.Visible && c.Width > 0) && cards.Zip(cards.Skip(1)).All(pair => pair.First.Bottom <= pair.Second.Top), "Settings: cards must remain distinct and reachable at compact/wide sizes.");
+            Check(cards.All(c => c.Visible && c.Width > 0)
+                && !cards.SelectMany((card, i) => cards.Skip(i + 1).Select(other => card.Bounds.IntersectsWith(other.Bounds))).Any(overlap => overlap),
+                "Settings: cards must remain distinct and reachable at compact/wide sizes.");
         }
         SelectPage(form, "Overview"); Check(!theme.Visible, "Settings: theme must not remain in navigation.");
         Check(bridge.Requests.Count == 0, "Settings: no hardware effects from startup, themes or navigation.");

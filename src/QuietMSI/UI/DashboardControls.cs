@@ -39,41 +39,23 @@ internal sealed class DashboardViewport : BufferedPanel
     }
 }
 
-internal sealed class RoundedCard : Panel
+internal sealed class DashboardCard : BufferedPanel
 {
-    public Theme Theme { get; }
-    public RoundedCard(Theme theme)
+    private readonly Theme _theme;
+    public DashboardCard(Theme theme)
     {
-        Theme = theme;
-        DoubleBuffered = true;
-        SetStyle(ControlStyles.ResizeRedraw, true);
-        Padding = new Padding(18);
+        _theme = theme;
+        Padding = new Padding(16);
         BackColor = theme.Surface;
-    }
-    protected override void OnPaintBackground(PaintEventArgs e)
-    {
-        e.Graphics.Clear(Parent?.BackColor ?? Theme.Background);
     }
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var path = Shapes.Round(new RectangleF(.5f, .5f, Width - 1, Height - 1), 14);
-        using var fill = new SolidBrush(Theme.Surface);
-        using var border = new Pen(Theme.Border);
-        e.Graphics.FillPath(fill, path);
-        if (SystemInformation.HighContrast) e.Graphics.DrawPath(border, path);
-    }
-}
-
-internal static class Shapes
-{
-    public static GraphicsPath Round(RectangleF r, float radius)
-    {
-        var p = new GraphicsPath(); var d = radius * 2;
-        p.AddArc(r.X, r.Y, d, d, 180, 90); p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-        p.CloseFigure(); return p;
+        if (Width > 1 && Height > 1)
+        {
+            using var pen = new Pen(_theme.Border);
+            e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+        }
     }
 }
 
@@ -94,17 +76,18 @@ internal sealed class DashboardButton : Button
     protected override void OnMouseLeave(EventArgs e) { _hover = false; Invalidate(); base.OnMouseLeave(e); }
     protected override void OnPaint(PaintEventArgs e)
     {
-        // Clear rounded corners ourselves; Button's native background painter leaves
-        // focus/hover fragments outside the rounded path when its state changes.
-        e.Graphics.Clear(Parent?.BackColor ?? Theme.Surface);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        var fill = Primary && Enabled ? Theme.Accent : Selected || _hover ? Theme.Selected : Navigation ? Theme.Surface : Theme.ControlSurface;
-        var ink = !Enabled ? Theme.Muted : Primary ? Theme.AccentInk : Selected ? Theme.Accent : Theme.Ink;
-        using var path = Shapes.Round(new RectangleF(.5f, .5f, Width - 1, Height - 1), 8);
-        using var brush = new SolidBrush(fill); using var pen = new Pen(Navigation ? fill : Theme.Border);
-        e.Graphics.FillPath(brush, path); if (SystemInformation.HighContrast) e.Graphics.DrawPath(pen, path);
+        var highlighted = Enabled && (Selected || _hover);
+        var fill = Primary && Enabled ? Theme.Accent : highlighted ? Theme.Selected : Navigation ? Theme.Surface : Theme.ControlSurface;
+        var ink = !Enabled ? (SystemInformation.HighContrast ? SystemColors.GrayText : Theme.Muted)
+            : Primary ? Theme.AccentInk : highlighted ? Theme.SelectedInk : Theme.Ink;
+        e.Graphics.Clear(fill);
+        if (!Navigation && (!Primary || !Enabled) && Width > 1 && Height > 1)
+        {
+            using var border = new Pen(Selected && Enabled && !SystemInformation.HighContrast ? Theme.Accent : Theme.Border);
+            e.Graphics.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+        }
         TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, ink, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-        if (Navigation && Selected) { using var line = new Pen(Theme.Accent, 3); e.Graphics.DrawLine(line, 12, Height - 2, Width - 12, Height - 2); }
+        if (Navigation && Selected && Width >= 24) { using var line = new Pen(Theme.SelectedInk, LogicalToDeviceUnits(2)); e.Graphics.DrawLine(line, 8, Height - 2, Width - 8, Height - 2); }
         if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(e.Graphics, Rectangle.Inflate(ClientRectangle, -5, -5), ink, fill);
     }
 }
@@ -112,7 +95,7 @@ internal sealed class DashboardButton : Button
 internal sealed class FanCurveChart : Control
 {
     private readonly Theme _theme;
-    private int[]? _points, _targets;
+    private int[]? _points, _targets, _draft;
     public FanCurveChart(Theme theme) { _theme = theme; DoubleBuffered = true; SetStyle(ControlStyles.ResizeRedraw, true); TabStop = false; AccessibleName = "Current CPU fan curve, read-only; actual temperature axis"; }
     public void SetData(HardwareControlState? state)
     {
@@ -124,35 +107,49 @@ internal sealed class FanCurveChart : Control
             : "Current CPU curve unavailable";
         Invalidate();
     }
-    private RectangleF PlotBounds => new(39, 12, Math.Max(1, Width - 72), Math.Max(1, Height - 76));
+    public void SetDraft(int[]? draft)
+    {
+        if (_draft is null ? draft is null : draft is not null && _draft.SequenceEqual(draft)) return;
+        _draft = draft;
+        Invalidate();
+    }
+
+    private int D(int value) => LogicalToDeviceUnits(value);
+    private RectangleF PlotBounds => new(D(39), D(12), Math.Max(1, Width - D(59)), Math.Max(1, Height - D(71)));
     // A six-column companion table keeps every exact point readable without inventing a categorical axis.
     internal IReadOnlyList<Rectangle> TemperatureAnnotationBounds()
     {
         if (_points is not { Length: 6 }) return Array.Empty<Rectangle>();
-        return _points.Select((p, i) => new Rectangle(i * Width / 6, Height - 44, Width / 6, 22)).ToArray();
+        return _points.Select((_, i) => new Rectangle(i * Width / 6, Height - D(42), Width / 6, D(20))).ToArray();
     }
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e); var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
-        if (_points is not { Length: 6 } || _targets is not { Length: 6 } || _points.Where((p, i) => p < 0 || p > 100 || (i > 0 && p <= _points[i - 1])).Any() || _targets.Any(p => p < 0 || p > 100))
+        if (_points is not { Length: 6 } points || _targets is not { Length: 6 } targets || points.Where((p, i) => p < 0 || p > 100 || (i > 0 && p <= points[i - 1])).Any() || targets.Any(p => p < 0 || p > 100))
         { TextRenderer.DrawText(g, "Current curve unavailable · waiting for a complete six-point table", _theme.Body, ClientRectangle, _theme.Muted, TextFormatFlags.WordBreak | TextFormatFlags.VerticalCenter); return; }
         var plot = PlotBounds;
         using var grid = new Pen(_theme.Border); using var ink = new SolidBrush(_theme.Muted);
         for (var percent = 0; percent <= 100; percent += 20)
-        { var y = plot.Bottom - plot.Height * percent / 100; g.DrawLine(grid, plot.Left, y, plot.Right, y); g.DrawString(percent + "%", _theme.Small, ink, 0, y - 7); }
-        var start = _points[0]; var end = Math.Max(start + 1, _points[5]);
-        var vertices = _points.Select((p, i) => new PointF(plot.Left + (p - start) * plot.Width / (end - start), plot.Bottom - _targets[i] * plot.Height / 100)).ToArray();
+        { var y = plot.Bottom - plot.Height * percent / 100; g.DrawLine(grid, plot.Left, y, plot.Right, y); g.DrawString(percent + "%", _theme.Small, ink, 0, y - D(7)); }
+        var start = points[0]; var end = points[^1];
+        PointF[] Vertices(int[] values) => points.Select((p, i) => new PointF(plot.Left + (p - start) * plot.Width / (end - start), plot.Bottom - values[i] * plot.Height / 100)).ToArray();
+        var vertices = Vertices(targets);
         using var area = new GraphicsPath(); area.AddLines(vertices); area.AddLine(vertices[^1], new PointF(plot.Right, plot.Bottom)); area.AddLine(new PointF(plot.Right, plot.Bottom), new PointF(plot.Left, plot.Bottom)); area.CloseFigure();
         using var fill = new SolidBrush(Color.FromArgb(24, _theme.Accent)); g.FillPath(fill, area);
-        using var line = new Pen(_theme.Accent, 2.5f); using var dot = new SolidBrush(_theme.Accent); g.DrawLines(line, vertices);
+        using var line = new Pen(_theme.Accent, D(2)); using var dot = new SolidBrush(_theme.Accent); g.DrawLines(line, vertices);
+        if (_draft is { Length: 6 } draft)
+        {
+            using var draftLine = new Pen(_theme.Ink, D(2)) { DashStyle = DashStyle.Dash };
+            g.DrawLines(draftLine, Vertices(draft));
+        }
         var annotations = TemperatureAnnotationBounds();
         for (var i = 0; i < 6; i++)
         {
             g.FillEllipse(dot, vertices[i].X - 3, vertices[i].Y - 3, 6, 6);
             // Companion table, not tick labels: plotted vertices retain the actual temperature axis.
-            TextRenderer.DrawText(g, _points[i] + "°C", _theme.Small, annotations[i], _theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.HorizontalCenter);
-            var targetBounds = annotations[i]; targetBounds.Y += 22;
-            TextRenderer.DrawText(g, _targets[i] + "%", _theme.Small, targetBounds, _theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.HorizontalCenter);
+            TextRenderer.DrawText(g, points[i] + "°C", _theme.Small, annotations[i], _theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.HorizontalCenter);
+            var targetBounds = annotations[i]; targetBounds.Y += D(20);
+            TextRenderer.DrawText(g, targets[i] + "%", _theme.Small, targetBounds, _theme.Muted, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.HorizontalCenter);
         }
     }
 }

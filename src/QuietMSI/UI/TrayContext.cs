@@ -16,6 +16,7 @@ public sealed class TrayContext : ApplicationContext
     private bool _started;
     private bool _suspended;
     private bool _drainingRead;
+    private bool _windowClosed;
     public MainForm Window { get; }
     public int PollIntervalMilliseconds => _pollTimer.Interval;
 
@@ -43,6 +44,7 @@ public sealed class TrayContext : ApplicationContext
         Window.VisibleChanged += VisibilityChanged;
         Window.Resize += WindowResized;
         Window.FormClosing += ClosingWindow;
+        Window.FormClosed += (_, _) => { _windowClosed = true; if (!_exiting) ExitThread(); };
         Window.ApplyCompleted += ApplyCompleted;
         Window.RestoreRequested += (_, _) => ShowWindow();
         SystemEvents.PowerModeChanged += PowerModeChanged;
@@ -76,10 +78,10 @@ public sealed class TrayContext : ApplicationContext
         if (Window.LastSnapshot is null) await Window.PollAsync();
     }
 
-    private async void PollTick(object? sender, EventArgs e)
+    private void PollTick(object? sender, EventArgs e)
     {
         Window.UpdateFreshness(DateTimeOffset.UtcNow);
-        await Window.PollAsync();
+        _ = Window.PollAsync();
     }
 
     private void VisibilityChanged(object? sender, EventArgs e)
@@ -111,8 +113,8 @@ public sealed class TrayContext : ApplicationContext
     {
         if (_disposed || _exiting || _exitPending) return;
         var reopening = !Window.Visible;
-        Window.Show();
         if (Window.WindowState == FormWindowState.Minimized) Window.WindowState = FormWindowState.Normal;
+        Window.Show();
         Window.Activate();
         _pollTimer.Interval = 5000;
         if (reopening && !_preparing && !_suspended) _ = Window.PollAsync();
@@ -125,7 +127,7 @@ public sealed class TrayContext : ApplicationContext
         {
             Window.BeginInvoke((Action)(async () =>
             {
-                if (_disposed || _exiting || _exitPending) return;
+                if (_disposed || _exiting) return;
                 if (e.Mode == PowerModes.Suspend && !_suspended)
                 {
                     _suspended = true;
@@ -136,7 +138,7 @@ public sealed class TrayContext : ApplicationContext
                 {
                     _suspended = false;
                     Window.SetSuspended(false);
-                    if (!_preparing)
+                    if (!_preparing && !_exitPending)
                     {
                         _pollTimer.Start();
                         await Window.RefreshAfterResumeAsync();
@@ -186,7 +188,7 @@ public sealed class TrayContext : ApplicationContext
         _exiting = true;
         _pollTimer.Stop();
         _tray.Visible = false;
-        if (!Window.IsDisposed) Window.Dispose();
+        if (!_windowClosed && !Window.IsDisposed) Window.Dispose();
         base.ExitThreadCore();
     }
 

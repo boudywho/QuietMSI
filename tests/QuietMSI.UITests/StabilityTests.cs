@@ -9,16 +9,16 @@ internal static partial class Program
     {
         using var theme = new Theme { Dark = true };
         using var host = new Form { ClientSize = new Size(360, 280), BackColor = theme.Background, StartPosition = FormStartPosition.CenterScreen };
-        var card = new RoundedCard(theme) { Location = new Point(20, 20), Size = new Size(200, 180) };
+        var card = new DashboardCard(theme) { Location = new Point(20, 20), Size = new Size(200, 180) };
         host.Controls.Add(card); host.Show(); UiEvents();
-        // This pixel was outside the old rounded corner but inside the widened card.
+        // Redraw the old right edge after it becomes part of the card interior.
         var probe = new Point(197, 177);
         var invalidated = new List<Rectangle>();
         card.Invalidated += (_, e) => invalidated.Add(e.InvalidRect);
         card.Width += 17;
         Check(invalidated.Any(rect => rect.Contains(probe) && rect.Width == card.Width && rect.Height == card.Height),
-            "ResizePainting: expanding by a scrollbar width must invalidate the entire old rounded edge, not only the newly exposed strip.");
-        Console.WriteLine("PASS ResizePainting (native resize invalidates the full card including the old rounded edge; no forced Refresh)");
+             "ResizePainting: expanding by a scrollbar width must invalidate the old edge, not only the newly exposed strip.");
+        Console.WriteLine("PASS ResizePainting (native resize invalidates the old card edge; no forced Refresh)");
     }
 
     private static void TestPollingPaintStability()
@@ -41,7 +41,7 @@ internal static partial class Program
         for (var i = 0; i < 100; i++)
         {
             bridge.HeldRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            bridge.HeldRead.SetResult(bridge.Snapshot with { CpuCelsius = 40 + i % 30 });
+            bridge.HeldRead.SetResult(bridge.Snapshot with { CpuCelsius = 40 + i % 30, CpuFan = new FanReading(45, 400 + i * 100, "fixture") });
             Pump(form.PollAsync()); UiEvents();
         }
         bridge.HeldRead = null;
@@ -101,21 +101,10 @@ internal static partial class Program
 
     private static void AssertNativeFrame(MainForm form)
     {
-        Check((GetWindowLongPtr(form.Handle, -16).ToInt64() & 0x00C00000) == 0, "NativeFrame: actual HWND must have no WS_CAPTION bits.");
+        Check((GetWindowLongPtr(form.Handle, -16).ToInt64() & 0x00C40000) == 0x00C40000, "NativeFrame: actual HWND must use a native caption and resizable border.");
         Check(GetWindowRect(form.Handle, out var outer) && GetClientRect(form.Handle, out var client) &&
-            outer.Right - outer.Left == client.Right && outer.Bottom - outer.Top == client.Bottom,
-            "NativeFrame: the actual client area must include the entire window, without a legacy caption inset.");
-        var memory = Marshal.AllocHGlobal(Marshal.SizeOf<NativeRect>());
-        try
-        {
-            var rect = new NativeRect { Left = 10, Top = 20, Right = 510, Bottom = 620 };
-            Marshal.StructureToPtr(rect, memory, false);
-            SendMessage(form.Handle, 0x83, IntPtr.Zero, memory);
-            var result = Marshal.PtrToStructure<NativeRect>(memory);
-            Check(result.Top == rect.Top && result.Bottom == rect.Bottom && result.Left == rect.Left && result.Right == rect.Right,
-                "NativeFrame: wParam=0 NCCALCSIZE must not reintroduce borders.");
-        }
-        finally { Marshal.FreeHGlobal(memory); }
+            outer.Right - outer.Left > client.Right && outer.Bottom - outer.Top > client.Bottom,
+            "NativeFrame: Windows must reserve space for the non-client frame.");
     }
 
     private static void TestNativeFrame()
@@ -126,16 +115,13 @@ internal static partial class Program
         for (var i = 0; i < 20; i++)
         {
             theme.SelectedItem = i % 2 == 0 ? "Light" : "Dark";
-            SendMessage(form.Handle, 0x86, IntPtr.Zero, IntPtr.Zero);
-            SendMessage(form.Handle, 0x86, new IntPtr(1), IntPtr.Zero);
-            SendMessage(form.Handle, 0x85, new IntPtr(1), IntPtr.Zero);
             form.ClientSize = i % 2 == 0 ? new Size(440, 600) : new Size(760, 760);
             UiEvents(); AssertNativeFrame(form);
         }
         var requested = 0; form.RestoreRequested += (_, _) => requested++;
         SendMessage(form.Handle, AppInstance.ShowMessage, IntPtr.Zero, IntPtr.Zero);
         Check(requested == 1, "NativeFrame: a second launch must request that the existing tray window reopen.");
-        Console.WriteLine("PASS NativeFrame (actual HWND styles/client extent, both NCCALCSIZE forms, activation/theme/resize; reopen message)");
+        Console.WriteLine("PASS NativeFrame (native caption and resize frame, theme switches, second-launch message)");
     }
 
     private static void TestRuntimeLog()

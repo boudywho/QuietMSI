@@ -96,7 +96,6 @@ internal static partial class Program
             TestOnScreenDropdowns();
             TestOverviewPollingDraft();
             TestDashboardNavigation();
-            TestBorderlessChrome();
             TestDashboardThemes();
             TestDashboardFirstViewport();
             TestNativeThemePixels();
@@ -130,7 +129,7 @@ internal static partial class Program
             Check(Descendants(form).Any(c => c.Text.Contains("firmware", StringComparison.OrdinalIgnoreCase)), "ReadOnlyControls: visible safety reason is missing.");
             Check(Descendants(form).Any(c => c.Text == "Unavailable"), "ReadOnlyControls: unknown telemetry must show Unavailable.");
             Console.WriteLine("PASS ReadOnlyControls (real native controls; no hardware transport)");
-            var cpuLabel = Descendants(form).Single(c => c is Label && c.AccessibleName == "CPU temperature" && c.Text == "Unavailable");
+            var cpuLabel = Descendants(form).Single(c => c.Name == "CpuTemperature" && c.Text == "Unavailable");
             var cpuBounds = cpuLabel.RectangleToScreen(cpuLabel.ClientRectangle);
             var clientBounds = form.RectangleToScreen(form.ClientRectangle);
             Check(cpuBounds.Top >= clientBounds.Top && cpuBounds.Bottom <= clientBounds.Bottom, "InitialLayout: CPU telemetry must be visible when the window opens, not scrolled below the header.");
@@ -165,7 +164,7 @@ internal static partial class Program
         using var form = new QuietMSI.UI.MainForm(bridge, null);
         form.Show(); Pump(form.PollAsync());
         var navigation = new[] { "Overview", "Cooling" }.Select(name => Descendants(form).OfType<Button>().SingleOrDefault(c => c.Name == "Nav_" + name)).ToArray();
-        Check(navigation.All(c => c is not null), "DashboardNavigation: Controls/Fan curve navigation must exist.");
+        Check(navigation.All(c => c is not null), "DashboardNavigation: Overview and Cooling must exist.");
         var editor = Descendants(form).Single(c => c.Name == "Hardware_CpuCurve2");
         Check(!editor.Visible, "DashboardNavigation: advanced editor belongs to Cooling, not the Overview first viewport.");
         navigation[1]!.PerformClick(); UiEvents();
@@ -184,31 +183,13 @@ internal static partial class Program
         form.Show(); Pump(form.PollAsync());
         var selector = Descendants(form).OfType<ComboBox>().SingleOrDefault(c => c.Name == "ThemeMode");
         Check(selector is not null, "DashboardThemes: live Light/Dark/System theme selector must exist.");
-        Check(selector!.Items.Cast<string>().SequenceEqual(new[] { "System", "Light", "Dark" }), "DashboardThemes: System is the default, with explicit Light and Dark choices.");
+        Check(selector!.Items.Cast<string>().SequenceEqual(new[] { "System", "Light", "Dark" }) && (string?)selector.SelectedItem == "Dark", "DashboardThemes: Dark is the default; System and Light remain available.");
         selector.SelectedItem = "Light"; UiEvents(); var light = form.BackColor;
         selector.SelectedItem = "Dark"; UiEvents();
         Check(light != form.BackColor && form.BackColor.GetBrightness() < .2f, "DashboardThemes: switching must recolor the actual native window.");
         Check(Descendants(form).Where(c => c is TextBox || c is NumericUpDown || c is ComboBox).All(c => c.BackColor.GetBrightness() < .3f && c.ForeColor.GetBrightness() > .5f), "DashboardThemes: editors and selectors must not remain light islands.");
         Check(bridge.Requests.Count == 0 && bridge.Reads == 1, "DashboardThemes: themes must have no hardware effects.");
         Console.WriteLine("PASS DashboardThemes (live whole-window palettes; native inputs; no hardware effects)");
-    }
-
-    private static void TestBorderlessChrome()
-    {
-        var bridge = new SyntheticControlBridge();
-        using var form = new QuietMSI.UI.MainForm(bridge, null);
-        form.Show(); Pump(form.PollAsync());
-        Check(form.FormBorderStyle == FormBorderStyle.None, "BorderlessChrome: native title bar must be removed.");
-        var buttons = new[] { "Window_Minimize", "Window_Maximize", "Window_Close" }.Select(name => Descendants(form).OfType<Button>().Single(c => c.Name == name)).ToArray();
-        Check(buttons.All(button => button.Visible && button.Parent!.ClientRectangle.Contains(button.Bounds)), "BorderlessChrome: caption actions must stay visible and inside the header.");
-        buttons[1].PerformClick(); UiEvents();
-        Check(form.WindowState == FormWindowState.Maximized && buttons[1].AccessibleName == "Restore window", "BorderlessChrome: maximize must offer restore.");
-        buttons[1].PerformClick(); UiEvents();
-        Check(form.WindowState == FormWindowState.Normal, "BorderlessChrome: restore must return to normal size.");
-        form.ClientSize = new Size(440, 600); UiEvents();
-        Check(buttons.All(button => button.Parent!.ClientRectangle.Contains(button.Bounds)), "BorderlessChrome: compact window must keep every caption action.");
-        Check(bridge.Requests.Count == 0, "BorderlessChrome: window actions must never write hardware.");
-        Console.WriteLine("PASS BorderlessChrome (custom caption actions, maximize/restore, compact placement; no writes)");
     }
 
     private static void TestDashboardFirstViewport()
@@ -218,7 +199,7 @@ internal static partial class Program
         var viewport = Descendants(form).Single(c => c.AccessibleName == "Telemetry and settings");
         var chart = Descendants(form).Single(c => c.Name == "CurrentCurveCard");
         var bounds = viewport.RectangleToScreen(viewport.ClientRectangle);
-        Check(!chart.Visible, "DashboardFirstViewport: compact Controls reserves fan curve detail for its dedicated view.");
+        Check(!chart.Visible, "DashboardFirstViewport: Overview reserves fan curve detail for Cooling.");
         Check(new[] { "SensorCard", "PerformanceCard", "CoolingCard" }.All(name => bounds.Contains(Descendants(form).Single(c => c.Name == name).RectangleToScreen(Descendants(form).Single(c => c.Name == name).ClientRectangle))), "DashboardFirstViewport: all daily controls fit at the default size.");
         var apply = Descendants(form).Single(c => c.Name == "Hardware_ApplyProfile");
         Check(apply is QuietMSI.UI.DashboardButton { Primary: true }, "DashboardFirstViewport: explicit profile Apply must carry the concept's teal primary action.");
@@ -242,7 +223,8 @@ internal static partial class Program
     {
         using var form = new QuietMSI.UI.MainForm(new SyntheticControlBridge(), null);
         form.Show(); Pump(form.PollAsync());
-        var cpu = Descendants(form).OfType<Label>().Single(c => c.AccessibleName == "CPU temperature" && c.Text.Contains("55.0"));
+        var cpu = Descendants(form).OfType<Label>().Single(c => c.Name == "CpuTemperature" && c.Text.Contains("55.0"));
+        Check(cpu.AccessibleName == $"CPU temperature: {cpu.Text}", "HeaderAndReadingsFit: assistive technology must receive the reading and its unit.");
         Check(cpu.Height >= TextRenderer.MeasureText(cpu.Text, cpu.Font).Height, "HeaderAndReadingsFit: sampled temperature must fit its font height.");
         var brand = Descendants(form).OfType<Label>().Single(c => c.Text == "QuietMSI");
         var machine = Descendants(form).OfType<Label>().Single(c => c.Text == "Synthetic UI fixture");
@@ -473,21 +455,21 @@ internal static partial class Program
             using (var first = new QuietMSI.UI.MainForm(bridge, path))
             {
                 var theme = Descendants(first).OfType<ComboBox>().Single(c => c.Name == "ThemeMode");
-                Check((string?)theme.SelectedItem == "System", "ThemePersistence: missing settings default to System.");
-                theme.SelectedItem = "Dark";
+                Check((string?)theme.SelectedItem == "Dark", "ThemePersistence: missing settings default to Dark.");
+                theme.SelectedItem = "System";
             }
             using (var second = new QuietMSI.UI.MainForm(bridge, path))
-                Check((string?)Descendants(second).OfType<ComboBox>().Single(c => c.Name == "ThemeMode").SelectedItem == "Dark", "ThemePersistence: chosen mode must survive reopening.");
+                Check((string?)Descendants(second).OfType<ComboBox>().Single(c => c.Name == "ThemeMode").SelectedItem == "System", "ThemePersistence: an existing System choice must survive reopening.");
             File.WriteAllText(path, "corrupt fixture");
             using (var corrupt = new QuietMSI.UI.MainForm(bridge, path))
-                Check((string?)Descendants(corrupt).OfType<ComboBox>().Single(c => c.Name == "ThemeMode").SelectedItem == "System", "ThemePersistence: corrupt preference must fall back safely.");
+                Check((string?)Descendants(corrupt).OfType<ComboBox>().Single(c => c.Name == "ThemeMode").SelectedItem == "Dark", "ThemePersistence: corrupt preference must fall back safely.");
             using (var denied = new QuietMSI.UI.MainForm(bridge, AppContext.BaseDirectory))
             {
-                Descendants(denied).OfType<ComboBox>().Single(c => c.Name == "ThemeMode").SelectedItem = "Dark";
+                Descendants(denied).OfType<ComboBox>().Single(c => c.Name == "ThemeMode").SelectedItem = "Light";
                 Check(Descendants(denied).Any(c => c.Name == "ApplyResult" && c.Text.Contains("could not be saved")), "ThemePersistence: save failure remains nonfatal and visible.");
             }
             Check(bridge.Reads == 0 && bridge.Requests.Count == 0, "ThemePersistence: construction, disposal and preferences cannot touch hardware.");
-            Console.WriteLine("PASS ThemePersistence (isolated file readback/reopen; System fallback; nonfatal write failure; no hardware)");
+            Console.WriteLine("PASS ThemePersistence (isolated file readback/reopen; Dark fallback; nonfatal write failure; no hardware)");
         }
         finally { File.Delete(path); }
     }
@@ -530,9 +512,11 @@ internal static partial class Program
         inputs[2].Value = 49;
         Pump(form.PollAsync());
         Check(inputs[2].Value == 49 && bridge.Requests.Count == 0, "CpuCurveWorkflow: draft edits and polling must not send writes or erase the draft.");
+        Check(Descendants(form).Any(c => c.Text.Contains("Dashed line · Unsaved draft")), "CpuCurveWorkflow: identify the draft separately from the current curve.");
         ((Button)Descendants(form).Single(c => c.Name == "Hardware_ApplyCurve")).PerformClick(); Pump(form.ActiveApply);
         Check(bridge.Requests.SequenceEqual(new[] { new ControlRequest(ControlKind.FanCurve, "38,43,49,54,60,70") }) && bridge.Reads == 3, "CpuCurveWorkflow: explicit Apply must send exactly six CSV percentages and read back once.");
         Check(form.LastError is null && Descendants(form).Any(c => c.Name == "ApplyResult" && c.Text.StartsWith("Backend verified")), "CpuCurveWorkflow: successful curve readback must be recognized.");
+        Check(!Descendants(form).Any(c => c.Text.Contains("Dashed line · Unsaved draft")), "CpuCurveWorkflow: clear the draft overlay after verified readback.");
         Check(inputs.Select(c => (int)c.Minimum).SequenceEqual(original), "CpuCurveWorkflow: successful Apply must not replace session-original floors.");
         Check(bridge.State.FanMode == 0x8d && bridge.State.CpuBreakpoints!.SequenceEqual(new[] { 0, 55, 64, 73, 76, 82 }), "CpuCurveWorkflow: curve editing must not change mode or temperatures.");
         Console.WriteLine("PASS CpuCurveWorkflow (synthetic; six fixed breakpoints, bounded drafts, explicit CSV Apply and readback)");
@@ -627,7 +611,7 @@ internal static partial class Program
         apply.PerformClick();
         PumpUntil(() => bridge.Reads == 3);
         Check(bridge.Requests.SequenceEqual(new[] { new ControlRequest(ControlKind.PerformanceProfile, "Turbo") }), "PerformanceWorkflow: Apply must issue exactly one correct request.");
-        Check(Descendants(form).Any(c => c.Text.Contains("Profile Turbo")), "PerformanceWorkflow: current profile must use immediate readback.");
+        Check(Descendants(form).Any(c => c.Text == "Current profile · Turbo"), "PerformanceWorkflow: current profile must use immediate readback.");
         Console.WriteLine("PASS PerformanceWorkflow (synthetic capability bridge; explicit Apply and readback)");
     }
 
@@ -643,7 +627,7 @@ internal static partial class Program
         Check(bridge.Requests.Count == 0, "BoostWorkflow: checkbox alone must not write.");
         apply.PerformClick(); Pump(form.ActiveApply);
         Check(bridge.Requests.Single() == new ControlRequest(ControlKind.CoolerBoost, "true") && bridge.Reads == 2, "BoostWorkflow: one true request and immediate readback required.");
-        Check(Descendants(form).Any(c => c.Text.Contains("Boost On")), "BoostWorkflow: readback bit must be displayed.");
+        Check(Descendants(form).Any(c => c.Text == "Cooler Boost · On"), "BoostWorkflow: readback bit must be displayed.");
         boost.Checked = false; apply.PerformClick(); Pump(form.ActiveApply);
         Check(bridge.Requests.Last() == new ControlRequest(ControlKind.CoolerBoost, "false") && bridge.Reads == 3, "BoostWorkflow: explicit off must use false.");
         form.UpdateFreshness(DateTimeOffset.UtcNow.AddMinutes(2));
@@ -690,7 +674,7 @@ internal static partial class Program
                 var packet = request.Value == "Restore" ? original : CoolingCurvePlan.Create(original, request.Value);
                 State = State with { CpuCurve = packet.Skip(1).Take(6).Select(v => (int)v).ToArray(), CpuCurvePacket = packet };
             }
-            if (request.Kind == ControlKind.AutomaticFans) State = State with { FanMode = (byte)(request.Value == "Advanced" ? 0x8d : 0x0d) };
+            if (request.Kind == ControlKind.AutomaticFans) State = State with { FanMode = (byte)(request.Value == "Advanced" ? 0x8d : 0x0d), Boost = 0 };
             State = State with { Performance = request.Value switch { "High" => 0xc0, "Medium" => 0xc1, "Turbo" => 0xc4, "Eco" => 0xc2, _ => State.Performance } };
             State = State with { Boost = request.Kind == ControlKind.CoolerBoost ? (byte)(request.Value == "true" ? 0x80 : 0) : State.Boost };
             return Task.FromResult(new ControlResult(true, "Synthetic transaction verified."));
@@ -700,9 +684,10 @@ internal static partial class Program
     private static void TestFanModeWorkflow()
     {
         var bridge = new SyntheticControlBridge();
+        bridge.State = bridge.State with { Boost = 0x80 };
         using var form = new QuietMSI.UI.MainForm(bridge, null);
         form.Show(); Pump(form.PollAsync());
-        Check(Descendants(form).Any(c => c.Text.Contains("Fans Advanced")), "FanModeWorkflow: current Advanced mode must be shown.");
+        Check(Descendants(form).Any(c => c.Text == "Current fan mode · Advanced"), "FanModeWorkflow: current Advanced mode must be shown.");
         Check(Descendants(form).Any(c => c.AccessibleDescription?.Contains("0°C → 38%") == true && c.AccessibleDescription.Contains("82°C → 70%")), "FanModeWorkflow: readable six-point current curve required.");
         Check(!Descendants(form).Any(c => c.Name is "Hardware_ChargeLimit" or "Hardware_ApplyCharge"), "FanModeWorkflow: do not expose unsupported charge editors.");
         var auto = (Button)Descendants(form).Single(c => c.Name == "Hardware_AutomaticFans");
@@ -710,13 +695,14 @@ internal static partial class Program
         Check(auto.Enabled, "FanModeWorkflow: real Auto capability must enable Apply Auto.");
         auto.PerformClick(); Pump(form.ActiveApply);
         Check(bridge.Requests.Single() == new ControlRequest(ControlKind.AutomaticFans, "Auto") && bridge.Reads == 2, "FanModeWorkflow: one Auto request and immediate readback required.");
-        Check(Descendants(form).Any(c => c.Text.Contains("Fans Auto")), "FanModeWorkflow: Auto mode must use readback.");
+        Check(Descendants(form).Any(c => c.Text == "Current fan mode · Auto"), "FanModeWorkflow: Auto mode must use readback.");
+        Check(form.LastError is null && Descendants(form).Any(c => c.Text == "Cooler Boost · Off"), "FanModeWorkflow: mode Apply also verifies that Boost is off.");
         var mode = (ComboBox)Descendants(form).Single(c => c.Name == "Hardware_FanMode");
         mode.SelectedItem = "Advanced";
         Check(bridge.Requests.Count == 1, "FanModeWorkflow: Advanced selection alone must not write.");
         auto.PerformClick(); Pump(form.ActiveApply);
         Check(bridge.Requests.Last() == new ControlRequest(ControlKind.AutomaticFans, "Advanced") && bridge.Reads == 3, "FanModeWorkflow: Advanced must use explicit mode-only request.");
-        Check(Descendants(form).Any(c => c.Text.Contains("Fans Advanced")), "FanModeWorkflow: Advanced mode must use readback.");
+        Check(Descendants(form).Any(c => c.Text == "Current fan mode · Advanced"), "FanModeWorkflow: Advanced mode must use readback.");
         Check(Descendants(form).Any(c => c.AccessibleDescription?.Contains("not a factory reset") == true), "FanModeWorkflow: clarify mode switching is not a factory reset.");
         Check(Descendants(form).Any(c => c.Text.StartsWith("Fan 1 ·")), "FanModeWorkflow: do not invent a CPU/GPU fan mapping.");
         Check(Descendants(form).Any(c => c.AccessibleDescription?.Contains("GPU asleep") == true), "FanModeWorkflow: expose provider sleep/unavailable telemetry reason.");
@@ -787,7 +773,7 @@ internal static partial class Program
             Check(actual.Top >= bounds.Top && actual.Bottom <= bounds.Bottom, "ActionVisibility: initial window must expose " + name);
         }
         form.ClientSize = new Size(440, 500); UiEvents();
-        var gpu = Descendants(form).Single(c => c is Label && c.AccessibleName == "GPU temperature" && c.Text == "Unavailable");
+        var gpu = Descendants(form).Single(c => c.Name == "GpuTemperature" && c.Text == "Unavailable");
         Check(gpu.Height < 40, "ActionVisibility: compact unavailable GPU status must not split the word across lines.");
         Console.WriteLine("PASS ActionVisibility (default Apply actions visible, compact status fit)");
     }

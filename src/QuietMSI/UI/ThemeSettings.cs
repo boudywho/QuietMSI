@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Text.Json;
 
 namespace QuietMSI.UI;
 
@@ -9,14 +10,21 @@ internal sealed class ThemeSettings
     public ThemeSettings(string? path) => _path = path;
     public string Read()
     {
-        try { if (_path is not null && File.Exists(_path)) { var value = System.Text.Json.JsonSerializer.Deserialize<string>(File.ReadAllText(_path)); if (value is "Light" or "Dark" or "System") return value; } }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or ArgumentException) { }
-        return "System";
+        try
+        {
+            if (_path is not null && File.Exists(_path))
+            {
+                var value = JsonSerializer.Deserialize<string>(File.ReadAllText(_path));
+                if (value is "Light" or "Dark" or "System") return value;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException) { }
+        return "Dark";
     }
     public bool Write(string value)
     {
         if (_path is null) return true;
-        try { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_path))!); File.WriteAllText(_path, System.Text.Json.JsonSerializer.Serialize(value)); return true; }
+        try { Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_path))!); File.WriteAllText(_path, JsonSerializer.Serialize(value)); return true; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException) { return false; }
     }
     public static bool SystemDark()

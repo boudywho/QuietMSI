@@ -14,9 +14,11 @@ internal sealed class ProfileSelector : Panel
         {
             if (value < -1 || value >= Items.Length) throw new ArgumentOutOfRangeException(nameof(value));
             if (_selectedIndex == value) return;
+            var previous = _selectedIndex;
             _selectedIndex = value;
             for (var i = 0; i < _buttons.Length; i++)
             {
+                if (i != previous && i != value) continue;
                 _buttons[i].Selected = i == value;
                 _buttons[i].AccessibleDescription = i == value ? "Selected draft; Apply profile to confirm" : "Select this power level";
                 _buttons[i].Invalidate();
@@ -34,7 +36,7 @@ internal sealed class ProfileSelector : Panel
         Height = 42; TabStop = true;
         _buttons = Items.Select((item, index) =>
         {
-            var button = new DashboardButton(theme) { Text = item, AccessibleName = item + " performance level", Font = theme.Body, TabIndex = index };
+            var button = new DashboardButton(theme) { Text = item, AccessibleName = item + " performance level", AccessibleDescription = "Select this power level", Font = theme.Body, TabIndex = index };
             button.Click += (_, _) => SelectedIndex = index;
             return button;
         }).ToArray();
