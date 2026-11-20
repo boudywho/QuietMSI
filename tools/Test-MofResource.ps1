@@ -22,7 +22,10 @@ try {
     $pointer = [FirmwareResourceCheck]::LockResource($loaded)
     $bytes = [byte[]]::new($size)
     [Runtime.InteropServices.Marshal]::Copy($pointer, $bytes, 0, $size)
-    $hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))
-    if ($hash -ne (Get-FileHash -LiteralPath $ExpectedBinary).Hash) { throw 'Resource differs from the independently compiled MOF.' }
+    # Windows PowerShell 5.1 runs on .NET Framework, which lacks HashData and ToHexString.
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try { $hash = [BitConverter]::ToString($sha256.ComputeHash($bytes)).Replace('-', '') }
+    finally { $sha256.Dispose() }
+    if ($hash -ne (Get-FileHash -LiteralPath $ExpectedBinary -Algorithm SHA256).Hash) { throw 'Resource differs from the independently compiled MOF.' }
     [PSCustomObject]@{ Success=$true; ResourceType='MOFDATA'; Name='MofResource'; Size=$size; Sha256=$hash; LoadMode='LOAD_LIBRARY_AS_DATAFILE; no executable code run' } | ConvertTo-Json | Set-Content -LiteralPath $Result
 } finally { [FirmwareResourceCheck]::FreeLibrary($module) | Out-Null }
