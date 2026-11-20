@@ -12,7 +12,7 @@ public sealed class WindowsHardwareBridge : ReadOnlyBridge, IControlCapabilityPr
     private readonly TimeSpan _deadline;
     private readonly Action<Process>? _started;
     private volatile bool _quarantined;
-    private byte[]? _originalCpuCurve;
+    private volatile byte[]? _originalCpuCurve;
     private int[]? _originalCpuBreakpoints;
     private byte[]? _lastAppliedCpuCurve;
 
@@ -110,15 +110,17 @@ public sealed class WindowsHardwareBridge : ReadOnlyBridge, IControlCapabilityPr
             cancellationToken.ThrowIfCancellationRequested();
             return await Task.Run(() =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
                     // Mutex acquire/release remain on the same worker thread across the whole transaction.
                     using var ownership = new MachineWriteOwnership();
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (request.Kind == ControlKind.FanCurve) return ApplyCpuCurve(request);
                     return new ControlTransaction(new MsiControlTransport()).Apply(request);
                 }
-                catch(Exception e) { return new ControlResult(false,e.Message); }
-            }).ConfigureAwait(false);
+                catch (Exception e) when (e is not OperationCanceledException) { return new ControlResult(false, e.Message); }
+            }, cancellationToken).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
     }
@@ -128,16 +130,16 @@ public sealed class WindowsHardwareBridge : ReadOnlyBridge, IControlCapabilityPr
         try
         {
             MsiControlStateReader.VerifyIdentity();
-            if (_originalCpuCurve is null) throw new InvalidOperationException("No captured session original table; curve change denied.");
+            var original = _originalCpuCurve ?? throw new InvalidOperationException("No captured session original table; curve change denied.");
             var state = MsiControlStateReader.Read();
             if (!CoolingCurvePlan.HasCompleteTable(state) || !state.CpuBreakpoints!.SequenceEqual(_originalCpuBreakpoints!))
                 throw new InvalidOperationException("CPU temperature points changed or are unavailable; no curve write sent.");
             var current = state.CpuCurvePacket!;
-            var expected = _lastAppliedCpuCurve ?? _originalCpuCurve;
+            var expected = _lastAppliedCpuCurve ?? original;
             if (!CoolingCurvePlan.SameStableFields(current,expected)) throw new InvalidOperationException("Curve differs from captured/last-applied table; another controller may have changed it. No overwrite.");
-            var next = request.Value == "Restore" ? (byte[])_originalCpuCurve.Clone() : CoolingCurvePlan.Create(_originalCpuCurve, request.Value);
+            var next = request.Value == "Restore" ? (byte[])original.Clone() : CoolingCurvePlan.Create(original, request.Value);
             next[0]=current[0]; // Preserve the freshly observed dynamic noneditable header.
-            MsiCpuCurve.Write(current,next,_originalCpuCurve);
+            MsiCpuCurve.Write(current, next, original);
             _lastAppliedCpuCurve = next;
             return new(true, request.Value == "Restore" ? "Captured original CPU table restored and verified; not a factory reset." : "CPU curve saved and verified. Select Advanced to use it; temperature/GPU tables unchanged.");
         }

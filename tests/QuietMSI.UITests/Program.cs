@@ -790,6 +790,10 @@ internal static partial class Program
             Check(!json.RootElement.GetProperty("ReadOnly").GetBoolean(), "CapabilityDiagnostics: cannot label a writable synthetic bridge read-only.");
             var caps = json.RootElement.GetProperty("Capabilities").EnumerateArray().ToArray();
             Check(caps.Count(c => c.GetProperty("CanWrite").GetBoolean()) == 4, "CapabilityDiagnostics: export bridge capabilities, not obsolete identity policy.");
+            form.SetSuspended(true);
+            Pump(form.ExportDiagnosticsAsync(path));
+            using var stale = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            Check(stale.RootElement.GetProperty("ReadOnly").GetBoolean(), "CapabilityDiagnostics: stale state must not be exported as writable.");
             Console.WriteLine("PASS CapabilityDiagnostics (synthetic capabilities serialized accurately)");
         }
         finally { File.Delete(path); }

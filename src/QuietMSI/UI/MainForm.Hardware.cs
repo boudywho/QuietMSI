@@ -159,6 +159,7 @@ public sealed partial class MainForm
             // A failed transaction may still have changed hardware. Never retry it automatically.
             var refreshed = await StartPoll(true);
             if (IsDisposed || token.IsCancellationRequested) return;
+            if (!refreshed && !IsStale) MarkStale("Current hardware state was not confirmed; Refresh required");
             if (!result.Applied)
             {
                 LastError = _applyError = result.Message;
@@ -212,7 +213,14 @@ public sealed partial class MainForm
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         UpdateFreshness(DateTimeOffset.UtcNow);
-        var capabilities = Enum.GetValues<ControlKind>().Select(CapabilityFor).ToArray();
+        var capabilities = Enum.GetValues<ControlKind>().Select(kind =>
+        {
+            var capability = CapabilityFor(kind);
+            if (!capability.CanWrite) return capability;
+            if (IsStale || _suspended || _preparing || _shutdownRequested || HasPendingApply || !ValidState(kind))
+                return capability with { CanWrite = false, Reason = "No fresh, applicable writable state at export time. " + capability.Reason };
+            return capability;
+        }).ToArray();
         var report = new
         {
             Application = "QuietMSI", ReadOnly = !capabilities.Any(cap => cap.CanWrite), ExportedAt = DateTimeOffset.UtcNow,
