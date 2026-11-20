@@ -20,18 +20,18 @@ internal static class UpdateChecker
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/" + Repository + "/releases?per_page=20");
         request.Headers.UserAgent.ParseAdd("QuietMSI/" + CurrentVersion.ToString(3));
         request.Headers.Accept.ParseAdd("application/vnd.github+json");
-        using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation);
+        using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotFound) throw new IOException("The GitHub repository or releases are not available yet.");
         if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests) throw new IOException("GitHub temporarily limited update checks. Try again later.");
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > ResponseLimit) throw new IOException("GitHub returned an unexpectedly large response.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         deadline.CancelAfter(TimeSpan.FromSeconds(15));
-        using var stream = await response.Content.ReadAsStreamAsync(deadline.Token);
+        using var stream = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
         using var buffer = new MemoryStream();
         var chunk = new byte[8192];
         int count;
-        while ((count = await stream.ReadAsync(chunk, deadline.Token)) != 0)
+        while ((count = await stream.ReadAsync(chunk, deadline.Token).ConfigureAwait(false)) != 0)
         {
             if (buffer.Length + count > ResponseLimit) throw new IOException("GitHub returned an unexpectedly large response.");
             buffer.Write(chunk, 0, count);
@@ -47,7 +47,7 @@ internal static class UpdateChecker
         UpdateRelease? newest = null;
         foreach (var release in document.RootElement.EnumerateArray())
         {
-            if (!release.TryGetProperty("draft", out var draft) || draft.ValueKind != JsonValueKind.False) continue;
+            if (release.ValueKind != JsonValueKind.Object || !release.TryGetProperty("draft", out var draft) || draft.ValueKind != JsonValueKind.False) continue;
             if (!release.TryGetProperty("tag_name", out var tag) || tag.ValueKind != JsonValueKind.String) continue;
             if (!Version.TryParse(tag.GetString()?.TrimStart('v'), out var version) || version.Build < 0 || Normalize(version) <= Normalize(current)) continue;
             if (!release.TryGetProperty("html_url", out var page) || page.ValueKind != JsonValueKind.String
@@ -55,7 +55,7 @@ internal static class UpdateChecker
                 || !uri.AbsoluteUri.StartsWith(ReleasesPage + "/tag/", StringComparison.Ordinal)) continue;
             // Offer only complete releases with both product distributions attached.
             if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array) continue;
-            var names = assets.EnumerateArray().Where(a => a.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String)
+            var names = assets.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.Object && a.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String)
                 .Select(a => a.GetProperty("name").GetString()).ToHashSet(StringComparer.Ordinal);
             var label = version.ToString(3);
             if (!names.Contains($"QuietMSI-{label}-Setup-x64.exe") || !names.Contains($"QuietMSI-{label}-Portable-win-x64.zip")) continue;

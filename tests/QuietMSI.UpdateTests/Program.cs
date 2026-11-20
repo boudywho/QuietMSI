@@ -20,5 +20,7 @@ Check(UpdateChecker.Parse(Releases(Release("0.6.0"), Release("0.5.0")), current)
 Check(UpdateChecker.Parse(Releases(Release("0.7.0"), Release("0.9.0"), Release("0.8.0")), current)?.Version == new Version(0, 9, 0), "choose newest complete experimental release independent of API order");
 Check(UpdateChecker.Parse(Releases(Release("1.0.0", draft: true), Release("2.0.0", complete: false), Release("3.0.0", url: "https://malicious.example/update"), Release("4.0.0", url: "https://github.com.evil.example/update")), current) is null, "ignore drafts, incomplete downloads and untrusted release URLs");
 Check(UpdateChecker.Parse(Releases(Release("not-a-version")), current) is null, "ignore invalid version tags");
+var invalidAssets = new { tag_name = "v9.0.0", draft = false, html_url = UpdateChecker.ReleasesPage + "/tag/v9.0.0", assets = new object?[] { null, "invalid", new { name = 7 } } };
+Check(UpdateChecker.Parse(Releases(false, invalidAssets, Release("0.7.0")), current)?.Version == new Version(0, 7, 0), "skip malformed release and asset entries without dropping valid releases");
 try { UpdateChecker.Parse(JsonSerializer.SerializeToUtf8Bytes(new { message = "error" }), current); throw new Exception("Accepted invalid response"); } catch (IOException) { Console.WriteLine("PASS invalid root fails visibly"); }
 try { UpdateChecker.Parse(new byte[1024 * 1024 + 1], current); throw new Exception("Accepted oversized response"); } catch (IOException) { Console.WriteLine("PASS response size is bounded"); }
