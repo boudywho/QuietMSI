@@ -1,110 +1,46 @@
----
-name: QuietMSI
-description: Native laptop dashboard, matching light/dark themes and explicit verified Apply actions.
-colors:
-  background: "rgb(245, 246, 248)"
-  surface: "rgb(255, 255, 255)"
-  ink: "rgb(17, 30, 48)"
-  muted: "rgb(85, 103, 123)"
-  border: "rgb(226, 229, 233)"
-  selected: "rgb(230, 247, 246)"
-  accent: "rgb(0, 127, 125)"
-  accent-ink: "rgb(255, 255, 255)"
-  warning: "rgb(176, 92, 0)"
-  dark-background: "rgb(20, 23, 29)"
-  dark-surface: "rgb(28, 32, 39)"
-  dark-ink: "rgb(235, 242, 247)"
-  dark-muted: "rgb(169, 186, 201)"
-  dark-border: "rgb(48, 54, 63)"
-  dark-selected: "rgb(32, 65, 68)"
-  dark-accent: "rgb(73, 207, 197)"
-  dark-accent-ink: "rgb(15, 34, 36)"
-  dark-warning: "rgb(255, 181, 85)"
-typography:
-  small:
-    fontFamily: "Segoe UI"
-    fontSize: "12.000000px"
-    fontWeight: 400
-  body:
-    fontFamily: "Segoe UI"
-    fontSize: "13.333333px"
-    fontWeight: 400
-  heading:
-    fontFamily: "Segoe UI"
-    fontSize: "17.333333px"
-    fontWeight: 700
-  title:
-    fontFamily: "Segoe UI"
-    fontSize: "22.666667px"
-    fontWeight: 700
-  reading:
-    fontFamily: "Segoe UI"
-    fontSize: "34.666667px"
-    fontWeight: 700
-rounded:
-  button: "8px"
-  card: "14px"
-spacing:
-  gap: "12px"
-  card-inset: "18px"
-  workspace-inset: "22px"
-components:
-  card:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.card}"
-    padding: "18px"
-  card-dark:
-    backgroundColor: "{colors.dark-surface}"
-    textColor: "{colors.dark-ink}"
-    rounded: "{rounded.card}"
-  button-primary:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.accent-ink}"
-    rounded: "{rounded.button}"
-    typography: "{typography.body}"
-  button-primary-dark:
-    backgroundColor: "{colors.dark-accent}"
-    textColor: "{colors.dark-accent-ink}"
-    rounded: "{rounded.button}"
-  navigation-selected:
-    backgroundColor: "{colors.selected}"
-    textColor: "{colors.accent}"
-    rounded: "{rounded.button}"
----
+# QuietMSI interface design
 
-# Design System: QuietMSI 0.4
+QuietMSI is a small native Windows control panel. The dashboard prioritizes
+daily adjustments and never makes a draft look like a hardware change.
 
-The interface is a small native Windows laptop control panel. G-Helper's [compact grouped settings](https://github.com/seerge/g-helper) informed the hierarchy; implementation, artwork and hardware semantics are original QuietMSI code. There is no borrowed source or branding.
+## Views
 
-## Structure
+- **Overview:** system telemetry first, then Performance and Cooling actions.
+  CPU and GPU temperatures, firmware-reported fans, battery and power source
+  use fixed-size cells. At wide widths the performance and cooling panels sit
+  side by side. They stack at narrow widths and scroll without hiding actions.
+- **Cooling:** the chart uses a real temperature axis and lists the six observed
+  values. The solid line is the reported curve; the dashed line is the local
+  draft. The six percentage inputs are keyboard editable, with fixed temperature
+  breakpoints. Restore means the captured session curve, not a factory reset.
+- **Settings:** appearance, startup, manual update checks, and device/app support
+  details. Settings do not affect hardware state.
+- **Status:** a persistent footer reports freshness and the latest action result.
+  Unknown values are **Unavailable**; stale values are last-known readings, not
+  permission to write. Extra provider context is available in tooltips and
+  accessibility descriptions.
 
-The default client area is 560 × 700 logical units, adjusted for Windows DPI and the screen working area. Controls is the opening view: one telemetry section, visible High / Medium / Turbo / Eco performance buttons, then fan mode and Cooler Boost. Keep the common actions in the opening viewport. At wide sizes, telemetry and curve preview sit beside the controls; small windows scroll vertically.
+## Visual system
 
-Fan curve is a separate view with a read-only chart above a six-point percentage editor. Show all six inputs on one row where space permits, otherwise use three columns. Temperatures stay fixed. The editor explains session-original restoration and exposes explicit Apply and Restore actions.
+Dark by default; persisted System and Light preferences retain their meanings.
+The dark palette pairs graphite `#0d1418` and `#172227` with mint `#73e6be`.
+Use Segoe UI, thin dividers, square panels, visible keyboard focus and restrained
+spacing. System high contrast uses Windows colors. Windows owns the caption,
+window controls, snap and resize frame. No animated transitions, web view,
+external fonts or rendering dependencies are used.
 
-There is no Diagnostics navigation, diagnostics text panel or export button. Firmware identity, sensor sources and detailed unavailable reasons use tooltips and accessibility descriptions. Current hardware state stays visible separately from editable choices.
+The logical client size is 820 × 650, adjusted to the monitor working area.
+When the inner layout reaches 650 logical units, Overview controls and Settings
+use two columns. Navigation and status remain outside the scrolling area.
 
-## Visual roles
+## Hardware interaction
 
-Use the frontmatter palette and source Theme.cs. Background is a neutral gray or deep charcoal; cards use a subtly lighter surface without outlines outside high contrast. Teal identifies the selected profile, current state, curve and primary Apply actions. Heading labels use Ink, supporting copy uses Muted. Keep the palette restrained and avoid duplicate gauges or decorative status graphics.
+Selection updates the draft locally. Only explicit Apply or Restore can send a
+command after a fresh capability check. Failed or unconfirmed commands preserve
+the draft and never trigger automatic retries. Startup, navigation, refresh,
+suspend, resume and exit never issue control commands. Existing hardware
+allowlists and readback remain authoritative.
 
-Use Segoe UI: Small 9pt, Body 10pt, Heading 13pt bold, Title 17pt bold, Reading 26pt bold, CompactReading 18pt bold. Temperature units stay with their value. Unknown sensors display Unavailable; never render a guessed value or treat a missing fan channel as stopped.
-
-Cards have an 18-unit inset and 12-unit spacing; the viewport has a 22-unit side inset. Manual geometry uses LogicalToDeviceUnits so the header, readings, chart, footer and editor track Windows DPI. The minimum outer window remains 440 × 480 pixels, with scrolling and keyboard reveal for off-screen controls.
-
-The native selector/spinner skins use the same palette in both themes. The window has an integrated caption with minimize, maximize/restore and close-to-tray buttons; native resizing, drag/snap and taskbar-aware maximization remain available. DWM supplies rounded corners on Windows 11. System follows the current Windows appearance; settings are stored locally. High contrast uses Windows system colors.
-
-## Interaction
-
-Performance levels are four native focusable buttons. Selection changes the draft and shows a confirmation hint; Apply sends the request. Fan mode and Cooler Boost retain separate explicit Apply actions. Navigation and theme selection never request hardware changes.
-
-Polling preserves the selected draft, focused control and scroll position. Keyboard Tab and Shift+Tab reveal their target. Invalid, stale or suspended state disables hardware changes; detailed reasons remain available to assistive technology and pointer users. The status footer reports freshness, pending operation, success or failure without requiring another view.
-
-Hardware transport, capability checks, curve floors/cap, monotonic validation and post-apply readback remain authoritative. UI layout changes must never bypass these checks.
-
-## Identity
-
-The original Q/airflow mark uses a mint Q with three white airflow strokes on a rounded charcoal tile. SVG is editable artwork; the PowerShell generator reproduces its original geometry. The Windows ICO contains 16, 24, 32, 48, 64, 128 and 256 pixel frames; the 16 pixel frame omits the interior strokes for clarity. Embed the ICO in the executable and use the same identity in the title bar, header and tray.
-
-Source authority: MainForm.cs, ProfileSelector.cs, Theme.cs, DashboardControls.cs, NativeAppearance.cs, ThemeSettings.cs, AppIcon.cs and TrayContext.cs. Current verification is recorded in docs/ui-overhaul.md. Earlier dashboard/finish review files describe the superseded 0.3 layout.
+Source: `src/QuietMSI/UI/MainForm*.cs`, `DashboardControls.cs`, `NativeAppearance.cs`
+and `Theme.cs`. See the [static layout reference](docs/quietmsi-preview.html) and
+[Windows acceptance checklist](docs/overhaul-windows-checklist.md).

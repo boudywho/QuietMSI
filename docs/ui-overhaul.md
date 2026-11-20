@@ -1,5 +1,8 @@
 # UI overhaul — 0.4
 
+This is the record for the earlier 0.4/0.5 builds. For the current redesign and
+its validation status, see [Windows acceptance](overhaul-windows-checklist.md).
+
 The main window now opens to compact Controls with one set of telemetry readings, four visible performance choices, fan mode and Cooler Boost. Fan curve contains the read-only graph and six bounded draft inputs. The Diagnostics tab, provider text panel and GUI export action are removed. Local diagnostic export through the existing command-line/API remains available.
 
 The original Q/airflow icon has editable SVG and PNG assets plus a seven-size ICO. The executable, window, header and tray use it. Rebuild the raster assets with tools/New-AppIcon.ps1.

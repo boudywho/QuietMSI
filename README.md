@@ -33,13 +33,13 @@ additional kernel driver or background service.
 - High, Medium, Turbo and Eco performance levels, with explicit Apply controls.
 - Auto/Advanced fan modes and Cooler Boost.
 - A bounded CPU fan-curve editor with session-original restoration.
-- Borderless window, tray operation, and System/Light/Dark themes in Settings.
+- Native Windows frame, tray operation, and a dark-first interface with System and Light options.
 - Optional elevated startup with Windows, plus on-demand GitHub release checks.
 - Self-contained **installer** and **portable** editions: no separate .NET runtime needed.
 
-![QuietMSI dark dashboard](docs/images/dashboard.png)
+[Open the static UI preview](docs/quietmsi-preview.html) · [Previous release screenshot](docs/images/dashboard.png)
 
-*Actual application UI with synthetic demonstration readings. Hardware values vary.*
+*The preview is an HTML design reference with example readings, not a capture of the Windows app.*
 
 ## Download and install
 
@@ -75,12 +75,13 @@ local test. See [standalone verification](docs/standalone-verification.md).
 
 ## Using QuietMSI
 
-1. Open **Controls** to view telemetry. Select a performance level, fan mode or
+1. Open **Overview** to view telemetry. Select a performance level, fan mode or
    boost setting, then press its **Apply** button. Draft selections alone do not write hardware.
-2. Open **Fan curve** for the CPU curve. Changes can only increase cooling relative
+2. Open **Cooling** for the CPU curve. A solid line shows the last reported curve;
+   a dashed line previews unsaved changes. Changes can only increase cooling relative
    to the table captured for the current app session. Fixed temperature points and
    unknown firmware bytes are preserved.
-3. Open **Settings** for appearance, startup and updates.
+3. Open **Settings** for appearance, startup, updates and device support status.
 
 Close or minimize keeps the app in the tray. Use **tray → Exit** to stop it.
 Starting a second copy reopens the running window. Hardware settings are never
@@ -147,6 +148,9 @@ The app uses C#/.NET 8, WinForms and System.Management. Source is organized into
 `src/QuietMSI.Core` (policies and transactions), `src/QuietMSI` (Windows hardware/UI),
 and `src/QuietMSI.Firmware` (owned schema resource). Release packaging lives in
 `installer/QuietMSI.iss` and `build.ps1`.
+
+See [Windows verification](docs/overhaul-windows-checklist.md) for the compile-only
+command and acceptance checklist for the redesigned app.
 
 ## Contributing and support
 

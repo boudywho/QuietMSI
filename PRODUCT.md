@@ -8,7 +8,9 @@ Windows desktop (native WinForms). This platform is outside Impeccable's web/iOS
 
 ## Stack
 
-Delegated and approved: C# .NET 8 native tray app with MIT license. Build directly in code for this native utility; the user delegated design and intermediate approvals. No WebView/Electron or external fonts. Publish a framework-dependent portable executable using the installed .NET Desktop runtime, with source and reproducible build instructions.
+C# .NET 8 native tray app with MIT license. No WebView/Electron or external fonts.
+The installer and portable ZIP are self-contained and require no separate .NET
+Desktop Runtime installation. Build instructions are in [README.md](README.md).
 
 ## Users
 
@@ -20,11 +22,13 @@ Replace the necessary control surface with a compact modern tray application. Re
 
 ## Operating Context
 
-Windows 11, GF63 Thin 11UCX, BIOS E16R6IMS.112. MSI Center UI 2.0.74.0 and SDK 3.2026.0911.01 are installed. Existing MSI services remain untouched until a separately approved migration. Local analysis and build run unelevated.
+Windows x64, with hardware support validated on GF63 Thin 11UCX, EC
+16R6EMS1.106 and WMI 2.8. MSI Center is not required. See the
+[standalone evidence](docs/standalone-verification.md) for validation scope.
 
 ## Capabilities and Constraints
 
-- Intended controls: performance profiles, Cooler Boost, battery charge limits, fan curves, return to BIOS automatic fans; MUX only if genuinely supported.
+- Supported controls: performance levels, Cooler Boost, Auto/Advanced fan mode, and the bounded CPU fan curve. No battery charge limits, MUX or GPU curve control.
 - All hardware writes require decompiled vendor evidence, applicable Linux mapping, and validated pre/post reads. No raw I/O port access, blind EC scans, unverified drivers, calibration operations, or guessed defaults.
 - Unknown/unverified controls are disabled with specific reasons. Missing telemetry renders unavailable, never zero or invented values.
 - No ads, analytics, accounts, automatic downloads, bundled drivers, peripheral/RGB utilities, or installer service.
@@ -34,7 +38,7 @@ Windows 11, GF63 Thin 11UCX, BIOS E16R6IMS.112. MSI Center UI 2.0.74.0 and SDK 3
 
 ## Evidence on Hand
 
-Discovery report and inventories under C:/Users/WindowsHostage/AppData/Local/hermes/cache/scratch/. MSI_ACPI WMI metadata is present. EC firmware identity, telemetry scaling, writable payloads, and independent telemetry validation are not established yet.
+See [hardware support](docs/hardware-specs.md) and [standalone verification](docs/standalone-verification.md) for demonstrated model and firmware behavior. RPM is firmware-reported, not independently calibrated.
 
 ## Product Principles
 

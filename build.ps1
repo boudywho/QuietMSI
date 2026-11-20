@@ -29,7 +29,7 @@ try {
     Copy-Item LICENSE,README.md,SECURITY.md,THIRD-PARTY-NOTICES.md -Destination $root
     & ./tools/Copy-RuntimeNotices.ps1 -Destination $root
     New-Item -ItemType Directory -Path (Join-Path $root 'docs') -Force | Out-Null
-    Copy-Item docs/hardware-specs.md,docs/stability-verification.md,docs/standalone-verification.md,docs/distribution.md,docs/release-verification.md -Destination (Join-Path $root 'docs')
+    Copy-Item docs/hardware-specs.md,docs/stability-verification.md,docs/standalone-verification.md,docs/distribution.md,docs/release-verification.md,docs/quietmsi-preview.html,docs/overhaul-windows-checklist.md -Destination (Join-Path $root 'docs')
     Copy-Item -LiteralPath docs/images -Destination (Join-Path $root 'docs') -Recurse -Force
     $output = Join-Path $PSScriptRoot 'artifacts'
     $zip = Join-Path $output "QuietMSI-$version-Portable-win-x64.zip"

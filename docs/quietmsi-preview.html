@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuietMSI — static UI preview</title>
+<style>
+  :root { color-scheme: dark; --page:#0d1418; --panel:#172227; --control:#1f2e34;
+    --ink:#e9f3f4; --muted:#a9c0c4; --line:#34474d; --mint:#73e6be; --selection:#21433c; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:clamp(.75rem,4vw,3rem); background:var(--page); color:var(--ink); font:15px/1.45 "Segoe UI",system-ui,sans-serif; }
+  main { max-width:52rem; margin:auto; }
+  a { color:var(--mint); }
+  a:focus-visible { outline:2px solid var(--mint); outline-offset:4px; }
+  .note { margin:0 0 .75rem; color:var(--muted); }
+  .window { border:1px solid var(--line); }
+  .caption { padding:.4rem .75rem; font-size:.85rem; border-bottom:1px solid var(--line); }
+  header, footer { background:var(--panel); padding:.75rem 1.1rem; }
+  header { border-bottom:1px solid var(--line); }
+  footer { border-top:1px solid var(--line); }
+  h1,h2,h3,p { margin:0; }
+  h1 { font-size:1.4rem; }
+  h2 { font-size:1.12rem; margin-bottom:.55rem; }
+  h3 { font-size:1.05rem; margin-bottom:.4rem; }
+  .brand, nav, .actions { display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; }
+  .brand { margin-bottom:.9rem; }
+  .mark { display:grid; place-items:center; background:var(--selection); color:var(--mint); width:1.85rem; height:1.85rem; font-weight:750; }
+  nav a { padding:.4rem .7rem; color:var(--ink); text-decoration:none; }
+  nav a:first-child { background:var(--selection); border-bottom:2px solid var(--mint); color:var(--mint); }
+  nav .button { margin-left:auto; }
+  .workspace { padding:.8rem 1.1rem 1rem; }
+  .panel { border:1px solid var(--line); background:var(--panel); padding:.85rem 1rem; min-width:0; }
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:.9rem; }
+  .tiles p { margin:.15rem 0 .4rem; }
+  .eyebrow { color:var(--muted); font-size:.75rem; letter-spacing:.07em; margin-bottom:.2rem; }
+  .value { font-size:1.55rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .muted, small { color:var(--muted); }
+  .current { color:var(--mint); font-size:.85rem; margin-bottom:.6rem; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-top:.75rem; }
+  .button { display:inline-block; border:1px solid var(--line); padding:.35rem .6rem; background:var(--control); line-height:1.35; white-space:nowrap; }
+  .primary { background:var(--mint); border-color:var(--mint); color:#0d211c; font-weight:650; }
+  .selected { background:var(--selection); border-color:var(--mint); color:var(--mint); }
+  .help { margin:.42rem 0 .75rem; color:var(--muted); font-size:.82rem; }
+  .below { margin-top:1.3rem; }
+  svg { display:block; width:100%; height:auto; margin:.55rem 0; }
+  .points { display:grid; grid-template-columns:repeat(6,1fr); gap:.45rem; margin:.7rem 0; }
+  .points div { min-width:0; }
+  .points .button { display:block; margin-top:.2rem; }
+  @media (max-width:43rem) { .grid { grid-template-columns:1fr; } .tiles { grid-template-columns:1fr 1fr; } }
+  @media (max-width:26rem) { .points { grid-template-columns:repeat(3,1fr); } nav .button { margin-left:0; } }
+</style>
+<main>
+  <p class="note">Static design preview · example readings · no hardware connection or interactive controls.</p>
+  <div class="window">
+    <div class="caption">QuietMSI</div>
+    <header>
+      <div class="brand"><span class="mark" aria-hidden="true">Q</span><h1>QuietMSI</h1><small>GF63 Thin 11UCX</small></div>
+      <nav aria-label="Preview sections"><a href="#overview">Overview</a><a href="#cooling">Cooling</a><a href="#settings">Settings</a><span class="button">Refresh</span></nav>
+    </header>
+    <div class="workspace" id="overview">
+      <section class="panel">
+        <h2>System telemetry</h2>
+        <div class="tiles">
+          <div><h3 class="eyebrow">CPU TEMPERATURE</h3><p class="value">54.0 °C</p></div>
+          <div><h3 class="eyebrow">GPU TEMPERATURE</h3><p class="value">47.0 °C</p></div>
+          <div><h3 class="eyebrow">FANS</h3><p>Fan 1 · 2450 RPM reported</p><p>Fan 2 · Unavailable</p></div>
+          <div><h3 class="eyebrow">POWER</h3><p>Battery · 82%</p><p>Source · AC</p></div>
+        </div>
+      </section>
+      <div class="grid">
+        <section class="panel">
+          <h2>Performance</h2><p class="current">Current profile · Medium</p>
+          <div class="actions"><span class="button">High</span><span class="button">Medium</span><span class="button">Turbo</span><span class="button selected">Eco</span></div>
+          <p class="help">Changes only take effect after Apply.</p><span class="button primary">Apply profile</span>
+        </section>
+        <section class="panel">
+          <h2>Cooling</h2><p class="current">Current fan mode · Auto</p>
+          <div class="actions"><span class="button">Auto ▾</span><span class="button">Apply mode</span></div>
+          <p class="help">Applying a fan mode turns Cooler Boost off.</p>
+          <p class="current">Cooler Boost · Off</p><div class="actions"><span>☐ Cooler Boost</span><span class="button">Apply boost</span></div>
+        </section>
+      </div>
+    </div>
+    <footer><small>Telemetry · Updated 14:32:08</small><p>Eco selected · Apply profile to confirm.</p></footer>
+  </div>
+  <section class="below" id="cooling">
+    <h2>Cooling view</h2>
+    <div class="panel">
+      <h3>Current CPU fan curve</h3>
+      <svg viewBox="0 0 720 136" role="img" aria-label="Example CPU fan curve: a solid reported line and dashed draft line plotted against temperature.">
+        <path d="M40 14H700 M40 42H700 M40 70H700 M40 98H700 M40 126H700" stroke="#34474d" fill="none"/>
+        <path d="M40 84L483 78L555 72L627 65L651 59L700 47L700 126H40Z" fill="#73e6be" fill-opacity=".11"/>
+        <path d="M40 84L483 78L555 72L627 65L651 59L700 47" stroke="#73e6be" stroke-width="3" fill="none"/>
+        <path d="M40 84L483 78L555 67L627 65L651 59L700 47" stroke="#e9f3f4" stroke-dasharray="5 4" stroke-width="2" fill="none"/>
+      </svg>
+      <small>Solid: reported curve · dashed: unsaved draft</small>
+    </div>
+    <div class="panel">
+      <h3>Edit CPU fan curve</h3><p class="muted">Set fan effort at each fixed temperature. Values cannot go below the captured curve.</p>
+      <div class="points"><div>0 °C<span class="button">38%</span></div><div>55 °C<span class="button">43%</span></div><div>64 °C<span class="button selected">52%</span></div><div>73 °C<span class="button">54%</span></div><div>76 °C<span class="button">60%</span></div><div>82 °C<span class="button">70%</span></div></div>
+      <div class="actions"><span class="button primary">Apply CPU curve</span><span class="button">Restore captured original</span></div>
+    </div>
+  </section>
+  <section class="below" id="settings">
+    <h2>Settings view</h2>
+    <div class="grid">
+      <section class="panel"><h3>Appearance</h3><p class="help">Dark by default. System follows Windows.</p><span class="button">Dark ▾</span></section>
+      <section class="panel"><h3>Startup</h3><p>☐ Start with Windows</p><p class="help">Starts in the tray and never applies hardware settings automatically.</p></section>
+      <section class="panel"><h3>Updates</h3><div class="actions"><span class="button">Check for updates</span><span class="button">Open releases</span></div></section>
+      <section class="panel"><h3>Device and app</h3><p>GF63 Thin 11UCX</p><p class="help">Firmware support status and application version.</p></section>
+    </div>
+  </section>
+</main>
+</html>
