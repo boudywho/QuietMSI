@@ -1,17 +1,26 @@
-# UI captures
+# UI capture records
 
-These captures are test artifacts, not live machine screenshots.
+This directory retains the 0.3 verification records, not the reviewed image set.
 
-- `readonly-ui.png`: UIHost smoke with a fresh ReadOnlyBridge; no transport and no invented telemetry.
-- `synthetic-ui.png`: native MainForm using SyntheticControlBridge, initial 560 × 740 client area.
-- `synthetic-cooling.png`: the same synthetic form scrolled to cooling, including mode-only Auto/Advanced Apply and the existing six-point read-only curve.
-- `synthetic-compact.png`: the same synthetic form resized to a 440 × 500 client area; lower settings require scrolling.
+- `finish-verification.json`: recorded 41 UI PASS cases, 17 core cases, Release build and smoke results.
+- `parent-final-verification.json`: parent-run acceptance output and portable publish evidence.
+- `finish-review-notes.md`: bounded dashboard correction evidence and RED → GREEN notes.
 
-Regenerate (using the installed .NET 8 SDK):
+The reviewed 0.3 images and their matching SHA-256 provenance live in
+`.impeccable/review/`: eight `synthetic-{light,dark}-{overview,cooling,diagnostics,compact}.png`
+fixtures and six `native-dark-{Hardware_Profile,Hardware_FanMode,ThemeMode}-{closed,open}.png`
+actual-screen crops. Those files and `synthetic-provenance.json` /
+`native-dropdown-provenance.json` are the coherent pair to cite; do not copy
+unprovenanced recaptures back into this directory.
+
+For current UI evidence, regenerate into an untracked build directory rather than
+committing a second image set:
 
 ```text
 dotnet run --project tests/QuietMSI.UITests -c Release -- --synthetic-screenshots
-dotnet run --project tests/QuietMSI.UITests -c Release -- --smoke --screenshot tests/QuietMSI.UITests/screenshots/readonly-ui.png
+dotnet run --project tests/QuietMSI.UITests -c Release -- --smoke --screenshot artifacts/ui-overhaul/readonly.png
 ```
 
-Tests compile the exact UI/UIHost sources without Program or hardware transport. Synthetic Apply only mutates fixture state and records requests. No hardware calls, elevation, or real hardware writes occur.
+Tests compile the exact UI/UIHost sources without Program or hardware transport.
+Synthetic Apply only mutates fixture state and records requests. No hardware calls,
+elevation, or real hardware writes occur.
