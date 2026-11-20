@@ -21,7 +21,8 @@ internal sealed class StartupRegistration : IStartupRegistration
     public StartupRegistration(string? executable = null, Guid? verificationId = null)
     {
         _executable = Path.GetFullPath(executable ?? Environment.ProcessPath ?? throw new InvalidOperationException("Application path unavailable."));
-        _sid = WindowsIdentity.GetCurrent().User?.Value ?? throw new InvalidOperationException("Current Windows user unavailable.");
+        using var identity = WindowsIdentity.GetCurrent();
+        _sid = identity.User?.Value ?? throw new InvalidOperationException("Current Windows user unavailable.");
         _taskSuffix = verificationId is null ? "" : "-Verification-" + verificationId.Value.ToString("N");
     }
     public Task<StartupState> ReadAsync() => Task.Run(() => WithScheduler(false, false));

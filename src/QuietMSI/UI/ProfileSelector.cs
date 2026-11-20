@@ -33,7 +33,7 @@ internal sealed class ProfileSelector : Panel
     }
     public ProfileSelector(Theme theme)
     {
-        Height = 42; TabStop = true;
+        Height = 42; TabStop = false;
         _buttons = Items.Select((item, index) =>
         {
             var button = new DashboardButton(theme) { Text = item, AccessibleName = item + " performance level", AccessibleDescription = "Select this power level", Font = theme.Body, TabIndex = index };
@@ -46,7 +46,13 @@ internal sealed class ProfileSelector : Panel
     {
         base.OnResize(e);
         if (_buttons is null) return;
+        var gap = LogicalToDeviceUnits(5);
+        var available = Math.Max(0, Width - gap * (_buttons.Length - 1));
         for (var i = 0; i < _buttons.Length; i++)
-            _buttons[i].SetBounds(i * Width / 4, 0, (i + 1) * Width / 4 - i * Width / 4 - LogicalToDeviceUnits(5), Height);
+        {
+            var start = i * available / _buttons.Length;
+            var end = (i + 1) * available / _buttons.Length;
+            _buttons[i].SetBounds(start + i * gap, 0, end - start, Height);
+        }
     }
 }

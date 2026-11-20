@@ -363,7 +363,7 @@ internal static partial class Program
         form.Show(); Pump(form.PollAsync()); form.ClientSize = new Size(440, 600); UiEvents();
         var scroll = Descendants(form).OfType<Panel>().Single(c => c.AccessibleName == "Telemetry and settings");
         var profile = Descendants(form).OfType<QuietMSI.UI.ProfileSelector>().Single(c => c.Name == "Hardware_Profile");
-        scroll.ScrollControlIntoView(profile); profile.Focus(); profile.SelectedItem = "Turbo"; UiEvents();
+        scroll.ScrollControlIntoView(profile); profile.Controls.OfType<Button>().First().Focus(); profile.SelectedItem = "Turbo"; UiEvents();
         var position = scroll.AutoScrollPosition;
         bridge.HeldRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var poll = form.PollAsync(); UiEvents();
