@@ -800,7 +800,9 @@ internal static partial class Program
         viewport.AutoScrollPosition = Point.Empty;
         form.ClientSize = new Size(440, 500); UiEvents();
         var gpu = Descendants(form).Single(c => c.Name == "GpuTemperature" && c.Text == "Unavailable");
-        Check(gpu.Height < 40, "ActionVisibility: compact unavailable GPU status must not split the word across lines.");
+        var singleLine = TextRenderer.MeasureText(gpu.Text, gpu.Font, Size.Empty, TextFormatFlags.SingleLine);
+        Check(gpu.ClientSize.Width >= singleLine.Width && gpu.ClientSize.Height >= singleLine.Height,
+            $"ActionVisibility: compact GPU status must fit on one line at DPI {form.DeviceDpi}; measured {singleLine}, allocated {gpu.ClientSize}.");
         Console.WriteLine("PASS ActionVisibility (default Apply actions visible, compact status fit)");
     }
 

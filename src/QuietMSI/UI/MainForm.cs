@@ -152,9 +152,16 @@ public sealed partial class MainForm : Form
                 ReadingHeight("Fan 2 · 30000 RPM reported · Target 149.9% (not RPM)", readingWidth),
                 ReadingHeight("Fan 2 · Measured RPM unavailable · Target 149.9% (not RPM)", readingWidth)));
             var powerHeight = Math.Max(D(40), ReadingHeight("Battery · Unavailable\nSource · Unavailable", readingWidth));
+            Size MeasureTemperature(string text, Font font) => TextRenderer.MeasureText(text, font, Size.Empty, TextFormatFlags.SingleLine);
+            var temperatureFont = _theme.CompactReading;
+            if (Math.Max(MeasureTemperature("Unavailable", temperatureFont).Width, MeasureTemperature("125.0 °C", temperatureFont).Width) > side)
+                temperatureFont = _theme.Heading;
+            _cpu.Font = _gpu.Font = temperatureFont;
+            var temperatureHeight = Math.Max(D(36), Math.Max(MeasureTemperature("Unavailable", temperatureFont).Height,
+                MeasureTemperature("125.0 °C", temperatureFont).Height) + D(4));
             telemetryTitle.SetBounds(D(18), D(12), textWidth, D(26));
             cpuTitle.SetBounds(D(18), D(43), side, D(18)); gpuTitle.SetBounds(D(18) + cell, D(43), side, D(18));
-            _cpu.SetBounds(D(18), D(61), side, D(36)); _gpu.SetBounds(D(18) + cell, D(61), side, D(36));
+            _cpu.SetBounds(D(18), D(61), side, temperatureHeight); _gpu.SetBounds(D(18) + cell, D(61), side, temperatureHeight);
             fanTitle.Visible = powerTitle.Visible = wide;
             if (wide)
             {
@@ -165,7 +172,7 @@ public sealed partial class MainForm : Form
                 _battery.SetBounds(powerTitle.Left, D(61), side, powerHeight);
                 return Math.Max(_gpuFan.Bottom, Math.Max(_battery.Bottom, _cpu.Bottom)) + D(11);
             }
-            _cpuFan.SetBounds(D(18), D(101), textWidth, fanHeight);
+            _cpuFan.SetBounds(D(18), _cpu.Bottom + D(4), textWidth, fanHeight);
             _gpuFan.SetBounds(D(18), _cpuFan.Bottom, textWidth, fanHeight);
             _battery.SetBounds(D(18), _gpuFan.Bottom, textWidth, powerHeight);
             return _battery.Bottom + D(11);
