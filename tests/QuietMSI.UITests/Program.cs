@@ -196,7 +196,10 @@ internal static partial class Program
     private static void TestDashboardFirstViewport()
     {
         using var form = new QuietMSI.UI.MainForm(new SyntheticControlBridge(), null);
-        form.Show(); Pump(form.PollAsync());
+        form.Show();
+        // WinForms posts Shown; the synthetic read completes synchronously and does not pump it.
+        UiEvents();
+        Pump(form.PollAsync());
         var viewport = Descendants(form).Single(c => c.AccessibleName == "Telemetry and settings");
         var chart = Descendants(form).Single(c => c.Name == "CurrentCurveCard");
         var bounds = viewport.RectangleToScreen(viewport.ClientRectangle);
@@ -783,7 +786,7 @@ internal static partial class Program
     private static void TestActionVisibility()
     {
         using var form = new QuietMSI.UI.MainForm(new SyntheticControlBridge(), null);
-        form.Show(); Pump(form.PollAsync());
+        form.Show(); UiEvents(); Pump(form.PollAsync());
         var viewport = Descendants(form).OfType<ScrollableControl>().Single(c => c.AccessibleName == "Telemetry and settings");
         var bounds = viewport.RectangleToScreen(viewport.ClientRectangle);
         var screenLimited = form.Height == Screen.FromHandle(form.Handle).WorkingArea.Height && viewport.VerticalScroll.Visible;
