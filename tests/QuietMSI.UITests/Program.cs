@@ -66,6 +66,7 @@ internal static partial class Program
             if(args.Contains("--keyboard-regression")) { TestKeyboardViewport(); TestAsyncPollingViewport(); TestPollingScrollStability(); return 0; }
             if(args.Contains("--compact-regression")) { TestCompactTelemetryFit(); return 0; }
             if(args.Contains("--viewport-regression")) { TestDashboardFirstViewport(); TestActionVisibility(); return 0; }
+            if(args.Contains("--exit-regression")) { TestExitDuringApply(); return 0; }
             if(args.Contains("--brand-regression")) { TestBrandWidthFit(); return 0; }
             if(args.Contains("--icon-regression")) { TestAppIcon(); return 0; }
             if(args.Contains("--chart-regression")) { TestChartAnnotationFit(); return 0; }
@@ -748,14 +749,18 @@ internal static partial class Program
         var held = new TaskCompletionSource<ControlResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var bridge = new SyntheticControlBridge { HeldApply = held };
         using var context = new QuietMSI.UI.TrayContext(bridge);
-        context.ShowWindow(); Pump(context.Window.PollAsync());
+        context.ShowWindow();
         var form = context.Window;
+        // Showing the tray window already requests telemetry. Wait for that read, not a second one.
+        Pump(form.ActiveSample);
+        var readsBeforeApply = bridge.Reads;
+        Check(readsBeforeApply == 1 && form.LastSnapshot is not null, "ExitDuringApply: opening must complete one initial read.");
         ((Button)Descendants(form).Single(c => c.Name == "Hardware_ApplyProfile")).PerformClick();
         Check(form.IsApplying && Descendants(form).Where(c => c.Name.StartsWith("Hardware_")).All(c => !c.Enabled), "ExitDuringApply: busy must disable hardware controls.");
         ((Button)Descendants(form).Single(c => c.Name == "Hardware_ApplyProfile")).PerformClick();
         Check(bridge.Requests.Count == 1, "ExitDuringApply: repeated click must not duplicate requests.");
         Pump(form.PollAsync());
-        Check(bridge.Reads == 1, "ExitDuringApply: background poll must not run during apply.");
+        Check(bridge.Reads == readsBeforeApply, $"ExitDuringApply: background poll must not run during apply; reads before {readsBeforeApply}, after {bridge.Reads}.");
         context.ExitApplication();
         Check(!form.IsDisposed && form.IsApplying, "ExitDuringApply: exit must wait until transaction and readback resolve.");
         var status = Descendants(form).Single(c => c.Name == "ApplyResult");
@@ -764,7 +769,7 @@ internal static partial class Program
         status.TextChanged += (_, _) => statusReplaced = true;
         held.SetResult(new(false, "Synthetic transaction finished"));
         Pump(form.ActiveApply); PumpUntil(() => form.IsDisposed);
-        Check(bridge.Reads == 2 && bridge.Requests.Count == 1, "ExitDuringApply: finish with readback, no exit write.");
+        Check(bridge.Reads == readsBeforeApply + 1 && bridge.Requests.Count == 1, "ExitDuringApply: finish with exactly one readback, no exit write.");
         Check(!statusReplaced, "ExitDuringApply: readback must not replace the queued-exit status.");
         Console.WriteLine("PASS ExitDuringApply (synthetic held transaction; serialized writes, deferred exit)");
     }
